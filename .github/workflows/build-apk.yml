@@ -29,9 +29,17 @@ jobs:
 
       - name: Update Compile SDK to 36
         run: |
-          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 36/g' android/app/build.gradle
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle
-          sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle
+          if [ -f "android/app/build.gradle.kts" ]; then
+            sed -i 's/compileSdk =.*flutter.compileSdkVersion.*/compileSdk = 36/g' android/app/build.gradle.kts
+            echo "Successfully updated build.gradle.kts"
+          elif [ -f "android/app/build.gradle" ]; then
+            sed -i 's/compileSdk .*/compileSdk 36/g' android/app/build.gradle
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
+            echo "Successfully updated build.gradle"
+          else
+            echo "Error: Gradle file not found!"
+            exit 1
+          fi
 
       - name: Install Dependencies
         run: flutter pub get

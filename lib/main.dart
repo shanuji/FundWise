@@ -92,7 +92,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 }
 
 // ==========================================
-// 1. HOME TAB (Results Overview)
+// 1. HOME TAB (Results Overview + Benchmark)
 // ==========================================
 class ResultsOverviewTab extends StatelessWidget {
   const ResultsOverviewTab({Key? key}) : super(key: key);
@@ -166,7 +166,7 @@ class ResultsOverviewTab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Text(
-                      'Excellent',
+                      'Outperforming Market',
                       style: TextStyle(color: Color(0xFF00D289), fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                   ),
@@ -181,7 +181,40 @@ class ResultsOverviewTab extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+
+            // Benchmark Comparison Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      const Text('Your Portfolio XIRR', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      const Text('18.64%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00D289))),
+                    ],
+                  ),
+                  Container(height: 30, width: 1, color: Colors.grey.shade300),
+                  Column(
+                    children: [
+                      const Text('Nifty 50 Benchmark', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      const Text('14.20%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D52D7))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // Metrics List
             _buildMetricTile(Icons.account_balance_wallet_outlined, 'Capital Invested', '₹10,00,000', Colors.black87),

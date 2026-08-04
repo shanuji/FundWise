@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class StatementUploadService {
   // NOTE: Replace this URL once you host your Python backend on Render/Railway
-  static const String apiEndpoint = "https://your-api-domain.com/api/v1/parse-cas";
+  static const String apiEndpoint = "https://fundwise-backend-coow.onrender.com/api/v1/parse-cas";
 
   Future<Map<String, dynamic>?> uploadAndProcessPDF() async {
     // 1. Open Native File Picker

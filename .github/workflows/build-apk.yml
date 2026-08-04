@@ -27,6 +27,12 @@ jobs:
       - name: Generate Android Scaffolding
         run: flutter create --platforms android .
 
+      - name: Update Compile SDK to 36
+        run: |
+          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 36/g' android/app/build.gradle
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle
+          sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle
+
       - name: Install Dependencies
         run: flutter pub get
 

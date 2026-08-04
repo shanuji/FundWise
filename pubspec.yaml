@@ -1,10 +1,10 @@
-name: mutual_fund_insights
-description: A new Flutter project.
+name: fundwise
+description: "Mutual Fund Portfolio Analytics & Tax Engine"
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -12,20 +12,12 @@ dependencies:
   cupertino_icons: ^1.0.2
   shared_preferences: ^2.2.3
   http: ^1.2.1
-  file_picker: ^8.0.3
-  # Optional: dotted_border: ^2.1.0 (For the exact dashed upload box)
+  file_picker: ^5.3.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/
-  # fonts:
-  #   - family: SFPro
-  #     fonts:
-  #       - asset: assets/fonts/SF-Pro-Display-Regular.otf
-  

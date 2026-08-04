@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2
+  shared_preferences: ^2.2.3
   # Optional: dotted_border: ^2.1.0 (For the exact dashed upload box)
 
 dev_dependencies:

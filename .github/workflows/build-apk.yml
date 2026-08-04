@@ -27,19 +27,19 @@ jobs:
       - name: Generate Android Scaffolding
         run: flutter create --platforms android .
 
-      - name: Update Compile SDK to 36
+      - name: Force Compile SDK to 36
         run: |
-          if [ -f "android/app/build.gradle.kts" ]; then
-            sed -i 's/compileSdk =.*flutter.compileSdkVersion.*/compileSdk = 36/g' android/app/build.gradle.kts
-            echo "Successfully updated build.gradle.kts"
-          elif [ -f "android/app/build.gradle" ]; then
-            sed -i 's/compileSdk .*/compileSdk 36/g' android/app/build.gradle
-            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
-            echo "Successfully updated build.gradle"
-          else
-            echo "Error: Gradle file not found!"
-            exit 1
-          fi
+          python3 -c "
+          import glob
+          for path in glob.glob('android/app/build.gradle*'):
+              with open(path, 'r') as f:
+                  content = f.read()
+              content = content.replace('flutter.compileSdkVersion', '36')
+              content = content.replace('flutter.targetSdkVersion', '36')
+              with open(path, 'w') as f:
+                  f.write(content)
+              print(f'Successfully updated {path}')
+          "
 
       - name: Install Dependencies
         run: flutter pub get

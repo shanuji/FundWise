@@ -27,18 +27,27 @@ jobs:
       - name: Generate Android Scaffolding
         run: flutter create --platforms android .
 
+      - name: Force Compile SDK to 36
+        run: |
+          FILE_KTS="android/app/build.gradle.kts"
+          FILE_GRADLE="android/app/build.gradle"
+          
+          if [ -f "$FILE_KTS" ]; then
+            sed -i 's/flutter\.compileSdkVersion/36/g' "$FILE_KTS"
+            sed -i 's/flutter\.targetSdkVersion/36/g' "$FILE_KTS"
+            echo "Successfully patched build.gradle.kts"
+          elif [ -f "$FILE_GRADLE" ]; then
+            sed -i 's/flutter\.compileSdkVersion/36/g' "$FILE_GRADLE"
+            sed -i 's/flutter\.targetSdkVersion/36/g' "$FILE_GRADLE"
+            echo "Successfully patched build.gradle"
+          else
+            echo "Could not find build.gradle file!"
+            exit 1
+          fi
+
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build Android APK
-        run: flutter build apk --release
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MutualFundApp-Release-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
-          
       - name: Build Android APK
         run: flutter build apk --release
 

@@ -1,3 +1,86 @@
+import 'package:flutter/material.dart';
+import 'history_screen.dart';
+import 'upload_screen.dart';
+import 'tax_settings_screen.dart';
+
+void main() {
+  runApp(const FundWiseApp());
+}
+
+class FundWiseApp extends StatelessWidget {
+  const FundWiseApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'FundWise',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFFF8F9FE),
+        fontFamily: 'SF Pro',
+        primaryColor: const Color(0xFF5D52D7),
+        colorScheme: ColorScheme.fromSwatch().copyWith(
+          primary: const Color(0xFF5D52D7),
+          secondary: const Color(0xFF00D289),
+        ),
+      ),
+      home: const MainNavigationShell(),
+    );
+  }
+}
+
+class MainNavigationShell extends StatefulWidget {
+  const MainNavigationShell({Key? key}) : super(key: key);
+
+  @override
+  State<MainNavigationShell> createState() => _MainNavigationShellState();
+}
+
+class _MainNavigationShellState extends State<MainNavigationShell> {
+  int _currentIndex = 0;
+
+  final List<Widget> _screens = const [
+    ResultsOverviewTab(),
+    HistoryScreen(),
+    InsightsTab(),
+    ProfileTab(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: const Color(0xFF5D52D7),
+        unselectedItemColor: Colors.grey,
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
+        elevation: 8,
+        backgroundColor: Colors.white,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Insights'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline_rounded), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 1. HOME TAB
+// ==========================================
 class ResultsOverviewTab extends StatefulWidget {
   const ResultsOverviewTab({Key? key}) : super(key: key);
 
@@ -192,6 +275,181 @@ class _ResultsOverviewTabState extends State<ResultsOverviewTab> {
           const SizedBox(width: 16),
           Expanded(child: Text(title, style: const TextStyle(fontSize: 14, color: Colors.black54))),
           Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: valueColor)),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 2. INSIGHTS TAB
+// ==========================================
+class InsightsTab extends StatelessWidget {
+  const InsightsTab({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8F9FE),
+        drawer: const FundWiseDrawer(),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: Colors.black87),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          title: const Text('Detailed Breakdown', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+          centerTitle: true,
+          bottom: const TabBar(
+            labelColor: Color(0xFF5D52D7),
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Color(0xFF5D52D7),
+            indicatorWeight: 3,
+            tabs: [Tab(text: 'Summary'), Tab(text: 'Cashflows'), Tab(text: 'Holdings')],
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            Center(child: Text('Summary Tab')),
+            Center(child: Text('Cashflows Tab')),
+            Center(child: Text('Holdings Tab')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 3. PROFILE TAB
+// ==========================================
+class ProfileTab extends StatelessWidget {
+  const ProfileTab({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FE),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent, 
+        elevation: 0, 
+        title: const Text('Profile & Settings', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)), 
+        centerTitle: true
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: const Color(0xFF5D52D7).withOpacity(0.1),
+                  child: const Icon(Icons.person, color: Color(0xFF5D52D7), size: 32),
+                ),
+                const SizedBox(width: 16),
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Investor Account', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4),
+                    Text('PAN: ABCDE****F', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('App Configuration', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 12),
+          _buildSettingsTile(
+            context,
+            Icons.tune,
+            'Tax Parameters',
+            'Adjust LTCG, STCG, and exemption limits',
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TaxSettingsScreen()));
+            },
+          ),
+          _buildSettingsTile(
+            context,
+            Icons.security_outlined,
+            'Security & Privacy',
+            'Biometric lock & local storage options',
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Security & Privacy settings coming soon!')),
+              );
+            },
+          ),
+          _buildSettingsTile(
+            context,
+            Icons.help_outline,
+            'Help & CAS FAQ',
+            'How CAMS & KFintech statements work',
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('FAQ Section coming soon!')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile(BuildContext context, IconData icon, String title, String subtitle, {required VoidCallback onTap}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: const Color(0xFF5D52D7)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 4. HAMBURGER DRAWER
+// ==========================================
+class FundWiseDrawer extends StatelessWidget {
+  const FundWiseDrawer({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF5D52D7), Color(0xFF3F379F)])),
+            child: Text('FundWise', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: const Text('Capital Gains Tax Report'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TaxSettingsScreen()));
+            },
+          ),
         ],
       ),
     );

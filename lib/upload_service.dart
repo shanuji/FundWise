@@ -6,7 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class StatementUploadService {
   static const String apiEndpoint = "https://fundwise-backend-coow.onrender.com/api/v1/parse-cas";
 
-  Future<Map<String, dynamic>?> uploadAndProcessPDF() async {
+  // The crucial update is here: it now accepts the password parameter
+  Future<Map<String, dynamic>?> uploadAndProcessPDF({String password = ""}) async {
     const XTypeGroup pdfGroup = XTypeGroup(
       label: 'PDFs',
       extensions: <String>['pdf'],
@@ -19,15 +20,24 @@ class StatementUploadService {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final ltcg = prefs.getString('ltcg_rate') ?? '12.5';
-    final stcg = prefs.getString('stcg_rate') ?? '20.0';
-    final exemption = prefs.getString('exemption_limit') ?? '125000';
-    String rawSlab = prefs.getString('income_slab') ?? '30%';
-    final slab = rawSlab.replaceAll('%', '').trim();
+    
+    // Helper function to strip commas and % signs
+    String cleanData(String? val, String fallback) {
+      if (val == null || val.isEmpty) return fallback;
+      String cleaned = val.replaceAll(RegExp(r'[^0-9.]'), '');
+      return cleaned.isEmpty ? fallback : cleaned;
+    }
+
+    final ltcg = cleanData(prefs.getString('ltcg_rate'), '12.5');
+    final stcg = cleanData(prefs.getString('stcg_rate'), '20.0');
+    final exemption = cleanData(prefs.getString('exemption_limit'), '125000');
+    final slab = cleanData(prefs.getString('income_slab'), '30');
 
     var request = http.MultipartRequest('POST', Uri.parse(apiEndpoint));
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
+    // Passing the password and cleaned data to your backend
+    request.fields['password'] = password;
     request.fields['ltcg_rate'] = ltcg;
     request.fields['stcg_rate'] = stcg;
     request.fields['exemption_limit'] = exemption;
@@ -36,10 +46,22 @@ class StatementUploadService {
     var streamedResponse = await request.send();
     var response = await http.Response.fromStream(streamedResponse);
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to process statement: ${response.statusCode}');
+    try {
+      final responseData = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return responseData;
+      } else {
+        // Extract the exact error string from the Python backend
+        dynamic detail = responseData['detail'] ?? 'Unknown processing error';
+        if (detail is List) {
+          throw Exception('FastAPI Validation Error: Check your form data parameters');
+        }
+        throw Exception(detail.toString());
+      }
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Server returned status ${response.statusCode}');
     }
   }
 }

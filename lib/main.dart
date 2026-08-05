@@ -49,7 +49,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: const FundWiseDrawer(),
+      // The drawer has been moved directly to the Tabs that have AppBars to fix the opening bug
       body: IndexedStack(
         index: _currentIndex,
         children: _screens,
@@ -69,22 +69,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         elevation: 8,
         backgroundColor: Colors.white,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_filled),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'History',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_rounded),
-            label: 'Insights',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Profile',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Insights'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline_rounded), label: 'Profile'),
         ],
       ),
     );
@@ -92,7 +80,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 }
 
 // ==========================================
-// 1. HOME TAB (Results Overview + Benchmark)
+// 1. HOME TAB
 // ==========================================
 class ResultsOverviewTab extends StatelessWidget {
   const ResultsOverviewTab({Key? key}) : super(key: key);
@@ -101,6 +89,7 @@ class ResultsOverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
+      drawer: const FundWiseDrawer(), // Added here so the button can find it
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -110,10 +99,7 @@ class ResultsOverviewTab extends StatelessWidget {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        title: const Text(
-          'Results Overview',
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Results Overview', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
           IconButton(
@@ -131,7 +117,6 @@ class ResultsOverviewTab extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Main XIRR Card
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -154,10 +139,7 @@ class ResultsOverviewTab extends StatelessWidget {
                 children: [
                   const Text('XIRR (Annualized)', style: TextStyle(color: Colors.white70)),
                   const SizedBox(height: 8),
-                  const Text(
-                    '18.64%',
-                    style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
+                  const Text('18.64%', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -182,8 +164,6 @@ class ResultsOverviewTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Benchmark Comparison Card
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -215,16 +195,11 @@ class ResultsOverviewTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Metrics List
             _buildMetricTile(Icons.account_balance_wallet_outlined, 'Capital Invested', '₹10,00,000', Colors.black87),
             _buildMetricTile(Icons.trending_up_outlined, 'Current Value', '₹12,47,580', Colors.black87),
             _buildMetricTile(Icons.auto_graph_outlined, 'Total Profit', '₹2,47,580', const Color(0xFF00D289)),
             _buildMetricTile(Icons.show_chart_outlined, 'Time Weighted Return (XIRR)', '18.64%', const Color(0xFF00D289)),
-            
             const SizedBox(height: 16),
-            
-            // Upload New Statement Button
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -234,15 +209,9 @@ class ResultsOverviewTab extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 icon: const Icon(Icons.cloud_upload_outlined, color: Color(0xFF5D52D7)),
-                label: const Text(
-                  'Upload New Statement',
-                  style: TextStyle(color: Color(0xFF5D52D7), fontWeight: FontWeight.bold),
-                ),
+                label: const Text('Upload New Statement', style: TextStyle(color: Color(0xFF5D52D7), fontWeight: FontWeight.bold)),
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const UploadScreen()),
-                  );
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const UploadScreen()));
                 },
               ),
             ),
@@ -270,18 +239,13 @@ class ResultsOverviewTab extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F2FF),
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFFF3F2FF), borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, color: const Color(0xFF5D52D7), size: 20),
           ),
           const SizedBox(width: 16),
@@ -294,7 +258,7 @@ class ResultsOverviewTab extends StatelessWidget {
 }
 
 // ==========================================
-// 2. INSIGHTS TAB (Detailed Breakdown)
+// 2. INSIGHTS TAB
 // ==========================================
 class InsightsTab extends StatelessWidget {
   const InsightsTab({Key? key}) : super(key: key);
@@ -305,6 +269,7 @@ class InsightsTab extends StatelessWidget {
       length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FE),
+        drawer: const FundWiseDrawer(), // Added here so the button can find it
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
@@ -321,105 +286,16 @@ class InsightsTab extends StatelessWidget {
             unselectedLabelColor: Colors.grey,
             indicatorColor: Color(0xFF5D52D7),
             indicatorWeight: 3,
-            tabs: [
-              Tab(text: 'Summary'),
-              Tab(text: 'Cashflows'),
-              Tab(text: 'Holdings'),
-            ],
+            tabs: [Tab(text: 'Summary'), Tab(text: 'Cashflows'), Tab(text: 'Holdings')],
           ),
         ),
-        body: TabBarView(
+        body: const TabBarView(
           children: [
-            _buildSummaryTab(),
-            _buildCashflowsTab(),
-            _buildHoldingsTab(),
+            Center(child: Text('Summary Tab')),
+            Center(child: Text('Cashflows Tab')),
+            Center(child: Text('Holdings Tab')),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        _buildDetailRow(Icons.account_balance_wallet_outlined, 'Capital Invested', '₹10,00,000'),
-        _buildDetailRow(Icons.show_chart, 'Current Value', '₹12,47,580'),
-        _buildDetailRow(Icons.trending_up, 'Absolute Profit', '₹2,47,580 (24.75%)', valueColor: const Color(0xFF00D289)),
-        _buildDetailRow(Icons.auto_graph, 'XIRR (Annualized)', '18.64%', valueColor: const Color(0xFF00D289)),
-        _buildDetailRow(Icons.calendar_today_outlined, 'First Investment', '15 Jan 2022'),
-        _buildDetailRow(Icons.access_time_outlined, 'Last Valuation Date', '15 May 2024'),
-        _buildDetailRow(Icons.swap_horiz_outlined, 'Total Investments (SIPs)', '24'),
-        _buildDetailRow(Icons.outbox_outlined, 'Total Withdrawals', '3'),
-      ],
-    );
-  }
-
-  Widget _buildCashflowsTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: const [
-        ListTile(
-          leading: Icon(Icons.arrow_downward, color: Color(0xFF00D289)),
-          title: Text('SIP Purchase - Quant Flexi Cap'),
-          subtitle: Text('10 May 2024'),
-          trailing: Text('₹10,000', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        ),
-        Divider(),
-        ListTile(
-          leading: Icon(Icons.arrow_downward, color: Color(0xFF00D289)),
-          title: Text('SIP Purchase - Invesco Mid Cap'),
-          subtitle: Text('05 May 2024'),
-          trailing: Text('₹12,000', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        ),
-        Divider(),
-        ListTile(
-          leading: Icon(Icons.arrow_upward, color: Colors.red),
-          title: Text('Partial Redemption - HDFC Flexi'),
-          subtitle: Text('12 Apr 2024'),
-          trailing: Text('-₹25,000', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.red)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHoldingsTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: const [
-        Card(
-          child: ListTile(
-            title: Text('Quant Flexi Cap Fund', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('XIRR: 22.4%  •  Units: 1,245.8'),
-            trailing: Text('₹3,45,000', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5D52D7))),
-          ),
-        ),
-        Card(
-          child: ListTile(
-            title: Text('Invesco India Mid Cap Fund', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('XIRR: 19.1%  •  Units: 890.2'),
-            trailing: Text('₹2,80,000', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5D52D7))),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String title, String value, {Color valueColor = Colors.black87}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFF5D52D7), size: 20),
-          const SizedBox(width: 16),
-          Expanded(child: Text(title, style: const TextStyle(color: Colors.black54))),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: valueColor)),
-        ],
       ),
     );
   }
@@ -436,10 +312,10 @@ class ProfileTab extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Profile & Settings', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        backgroundColor: Colors.transparent, 
+        elevation: 0, 
+        title: const Text('Profile & Settings', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)), 
+        centerTitle: true
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
@@ -471,21 +347,16 @@ class ProfileTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-
-          // Settings Section
           const Text('App Configuration', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
           const SizedBox(height: 12),
-          
+
           _buildSettingsTile(
             context,
             Icons.tune,
             'Tax Parameters',
             'Adjust LTCG, STCG, and exemption limits',
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const TaxSettingsScreen()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TaxSettingsScreen()));
             },
           ),
           _buildSettingsTile(
@@ -493,14 +364,22 @@ class ProfileTab extends StatelessWidget {
             Icons.security_outlined,
             'Security & Privacy',
             'Biometric lock & local storage options',
-            onTap: () {},
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Security & Privacy settings coming soon!')),
+              );
+            },
           ),
           _buildSettingsTile(
             context,
             Icons.help_outline,
             'Help & CAS FAQ',
             'How CAMS & KFintech statements work',
-            onTap: () {},
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('FAQ Section coming soon!')),
+              );
+            },
           ),
         ],
       ),
@@ -538,47 +417,15 @@ class FundWiseDrawer extends StatelessWidget {
         padding: EdgeInsets.zero,
         children: [
           const DrawerHeader(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF5D52D7), Color(0xFF3F379F)],
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('FundWise', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                SizedBox(height: 8),
-                Text('Mutual Fund Portfolio Analytics', style: TextStyle(color: Colors.white70, fontSize: 12)),
-              ],
-            ),
+            decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF5D52D7), Color(0xFF3F379F)])),
+            child: Text('FundWise', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
           ),
-          ListTile(
-            leading: const Icon(Icons.account_circle_outlined, color: Color(0xFF5D52D7)),
-            title: const Text('My Portfolio'),
-            trailing: const Icon(Icons.check_circle, color: Color(0xFF00D289), size: 18),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.people_outline, color: Colors.grey),
-            title: const Text("Father's Portfolio"),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Switched to Father's Portfolio")),
-              );
-            },
-          ),
-          const Divider(),
           ListTile(
             leading: const Icon(Icons.receipt_long_outlined),
             title: const Text('Capital Gains Tax Report'),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const TaxSettingsScreen()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TaxSettingsScreen()));
             },
           ),
         ],

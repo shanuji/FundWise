@@ -49,7 +49,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // The drawer has been moved directly to the Tabs that have AppBars to fix the opening bug
       body: IndexedStack(
         index: _currentIndex,
         children: _screens,
@@ -80,16 +79,40 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 }
 
 // ==========================================
-// 1. HOME TAB
+// 1. HOME TAB (Now Stateful to receive real data)
 // ==========================================
-class ResultsOverviewTab extends StatelessWidget {
+class ResultsOverviewTab extends StatefulWidget {
   const ResultsOverviewTab({Key? key}) : super(key: key);
 
   @override
+  State<ResultsOverviewTab> createState() => _ResultsOverviewTabState();
+}
+
+class _ResultsOverviewTabState extends State<ResultsOverviewTab> {
+  // This variable holds the real data from your Python server
+  Map<String, dynamic>? _portfolioData;
+
+  @override
   Widget build(BuildContext context) {
+    // Extracting the data safely. If no file is uploaded yet, it defaults to 0.
+    final summary = _portfolioData?['summary'];
+    
+    final String xirr = summary != null ? summary['xirr'].toString() : '0.0';
+    final String capitalInvested = summary != null ? summary['capital_invested'].toString() : '0.0';
+    final String currentValue = summary != null ? summary['current_value'].toString() : '0.0';
+    final String absProfit = summary != null ? summary['absolute_profit'].toString() : '0.0';
+    final String absReturn = summary != null ? summary['absolute_return_pct'].toString() : '0.0';
+    final String benchmark = summary != null ? summary['benchmark_xirr'].toString() : '0.0';
+    
+    // Logic to see if you are beating the market
+    bool isOutperforming = true;
+    if (summary != null) {
+      isOutperforming = (summary['xirr'] ?? 0) >= (summary['benchmark_xirr'] ?? 0);
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
-      drawer: const FundWiseDrawer(), // Added here so the button can find it
+      drawer: const FundWiseDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -139,25 +162,29 @@ class ResultsOverviewTab extends StatelessWidget {
                 children: [
                   const Text('XIRR (Annualized)', style: TextStyle(color: Colors.white70)),
                   const SizedBox(height: 8),
-                  const Text('18.64%', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text('$xirr%', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF00D289).withOpacity(0.2),
+                      color: isOutperforming ? const Color(0xFF00D289).withOpacity(0.2) : Colors.redAccent.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
-                      'Outperforming Market',
-                      style: TextStyle(color: Color(0xFF00D289), fontWeight: FontWeight.bold, fontSize: 12),
+                    child: Text(
+                      isOutperforming ? 'Outperforming Market' : 'Underperforming Market',
+                      style: TextStyle(
+                        color: isOutperforming ? const Color(0xFF00D289) : Colors.redAccent, 
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 12
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildMiniStat('Absolute Profit', '24.75%'),
-                      _buildMiniStat('Absolute Value', '₹2,47,580'),
+                      _buildMiniStat('Absolute Profit', '$absReturn%'),
+                      _buildMiniStat('Absolute Value', '₹$absProfit'),
                     ],
                   )
                 ],
@@ -180,7 +207,7 @@ class ResultsOverviewTab extends StatelessWidget {
                     children: [
                       const Text('Your Portfolio XIRR', style: TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(height: 4),
-                      const Text('18.64%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00D289))),
+                      Text('$xirr%', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00D289))),
                     ],
                   ),
                   Container(height: 30, width: 1, color: Colors.grey.shade300),
@@ -188,17 +215,17 @@ class ResultsOverviewTab extends StatelessWidget {
                     children: [
                       const Text('Nifty 50 Benchmark', style: TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(height: 4),
-                      const Text('14.20%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D52D7))),
+                      Text('$benchmark%', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D52D7))),
                     ],
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            _buildMetricTile(Icons.account_balance_wallet_outlined, 'Capital Invested', '₹10,00,000', Colors.black87),
-            _buildMetricTile(Icons.trending_up_outlined, 'Current Value', '₹12,47,580', Colors.black87),
-            _buildMetricTile(Icons.auto_graph_outlined, 'Total Profit', '₹2,47,580', const Color(0xFF00D289)),
-            _buildMetricTile(Icons.show_chart_outlined, 'Time Weighted Return (XIRR)', '18.64%', const Color(0xFF00D289)),
+            _buildMetricTile(Icons.account_balance_wallet_outlined, 'Capital Invested', '₹$capitalInvested', Colors.black87),
+            _buildMetricTile(Icons.trending_up_outlined, 'Current Value', '₹$currentValue', Colors.black87),
+            _buildMetricTile(Icons.auto_graph_outlined, 'Total Profit', '₹$absProfit', const Color(0xFF00D289)),
+            _buildMetricTile(Icons.show_chart_outlined, 'Time Weighted Return (XIRR)', '$xirr%', const Color(0xFF00D289)),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -210,8 +237,19 @@ class ResultsOverviewTab extends StatelessWidget {
                 ),
                 icon: const Icon(Icons.cloud_upload_outlined, color: Color(0xFF5D52D7)),
                 label: const Text('Upload New Statement', style: TextStyle(color: Color(0xFF5D52D7), fontWeight: FontWeight.bold)),
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const UploadScreen()));
+                onPressed: () async {
+                  // AWAIT the data coming back from the Upload Screen
+                  final result = await Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (context) => const UploadScreen())
+                  );
+                  
+                  // If we successfully received data, update the State!
+                  if (result != null && result['summary'] != null) {
+                    setState(() {
+                      _portfolioData = result;
+                    });
+                  }
                 },
               ),
             ),
@@ -269,7 +307,7 @@ class InsightsTab extends StatelessWidget {
       length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FE),
-        drawer: const FundWiseDrawer(), // Added here so the button can find it
+        drawer: const FundWiseDrawer(),
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
@@ -320,7 +358,6 @@ class ProfileTab extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // User Card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -349,7 +386,6 @@ class ProfileTab extends StatelessWidget {
           const SizedBox(height: 24),
           const Text('App Configuration', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
           const SizedBox(height: 12),
-
           _buildSettingsTile(
             context,
             Icons.tune,

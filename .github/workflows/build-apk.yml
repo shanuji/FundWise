@@ -29,17 +29,8 @@ jobs:
 
       - name: Force Compile SDK to 36
         run: |
-          python3 -c "
-          import glob
-          for path in glob.glob('android/app/build.gradle*'):
-              with open(path, 'r') as f:
-                  content = f.read()
-              content = content.replace('flutter.compileSdkVersion', '36')
-              content = content.replace('flutter.targetSdkVersion', '36')
-              with open(path, 'w') as f:
-                  f.write(content)
-              print(f'Successfully updated {path}')
-          "
+          find android -type f -name "build.gradle*" -exec sed -i 's/flutter.compileSdkVersion/36/g' {} +
+          find android -type f -name "build.gradle*" -exec sed -i 's/flutter.targetSdkVersion/36/g' {} +
 
       - name: Install Dependencies
         run: flutter pub get

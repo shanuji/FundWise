@@ -12,7 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   shared_preferences: ^2.2.3
   http: ^1.2.1
-  file_picker: ^8.0.3
+  file_picker: ^6.2.0
 
 dev_dependencies:
   flutter_test:
@@ -21,3 +21,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  

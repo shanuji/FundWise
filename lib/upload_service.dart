@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 class StatementUploadService {
   static const String apiEndpoint = "https://fundwise-backend-coow.onrender.com/api/v1/parse-cas";
 
-  // The crucial update is here: it now accepts the password parameter
   Future<Map<String, dynamic>?> uploadAndProcessPDF({String password = ""}) async {
     const XTypeGroup pdfGroup = XTypeGroup(
       label: 'PDFs',
@@ -21,7 +20,6 @@ class StatementUploadService {
 
     final prefs = await SharedPreferences.getInstance();
     
-    // Helper function to strip commas and % signs
     String cleanData(String? val, String fallback) {
       if (val == null || val.isEmpty) return fallback;
       String cleaned = val.replaceAll(RegExp(r'[^0-9.]'), '');
@@ -36,7 +34,6 @@ class StatementUploadService {
     var request = http.MultipartRequest('POST', Uri.parse(apiEndpoint));
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
-    // Passing the password and cleaned data to your backend
     request.fields['password'] = password;
     request.fields['ltcg_rate'] = ltcg;
     request.fields['stcg_rate'] = stcg;
@@ -47,21 +44,25 @@ class StatementUploadService {
     var response = await http.Response.fromStream(streamedResponse);
 
     try {
+      // NEW SAFETY CHECK: If the response is HTML (server crash), catch it cleanly.
+      if (!response.body.trim().startsWith('{')) {
+         throw Exception('Server crashed (Status ${response.statusCode}). Check Render logs.');
+      }
+
       final responseData = jsonDecode(response.body);
       
       if (response.statusCode == 200) {
         return responseData;
       } else {
-        // Extract the exact error string from the Python backend
         dynamic detail = responseData['detail'] ?? 'Unknown processing error';
         if (detail is List) {
-          throw Exception('FastAPI Validation Error: Check your form data parameters');
+          throw Exception('FastAPI Validation Error: Check form parameters');
         }
         throw Exception(detail.toString());
       }
     } catch (e) {
       if (e is Exception) rethrow;
-      throw Exception('Server returned status ${response.statusCode}');
+      throw Exception('Network error or server unavailable');
     }
   }
 }

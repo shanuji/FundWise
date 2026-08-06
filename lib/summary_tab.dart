@@ -14,25 +14,22 @@ class SummaryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Pulling the exact variables from portfolioSummary to perfectly match the Home tab
     final currentValue = (portfolioSummary['current_portfolio_value'] ?? 1766131.06).toDouble();
     final totalProfit = (portfolioSummary['total_profit'] ?? 201031.85).toDouble();
     final totalInvested = (portfolioSummary['total_capital_deployed'] ?? 1565099.21).toDouble();
     final statementReturn = (portfolioSummary['statement_annualized_return'] ?? 10.17).toDouble();
 
-    // Sort funds by current value descending
     final sortedFunds = List.from(fundsList)..sort((a, b) {
-      final valA = (a['current_value'] ?? 0.0).toDouble();
-      final valB = (b['current_value'] ?? 0.0).toDouble();
+      final valA = (a['current_value'] ?? a['value'] ?? 0.0).toDouble();
+      final valB = (b['current_value'] ?? b['value'] ?? 0.0).toDouble();
       return valB.compareTo(valA);
     });
 
-    // Find Best Performer
     Map<String, dynamic>? bestPerformer;
     if (sortedFunds.isNotEmpty) {
       bestPerformer = sortedFunds.reduce((curr, next) {
-        final currReturn = (curr['xirr'] ?? curr['annualized_return'] ?? 0.0).toDouble();
-        final nextReturn = (next['xirr'] ?? next['annualized_return'] ?? 0.0).toDouble();
+        final currReturn = (curr['xirr'] ?? curr['annualized_return'] ?? curr['cagr'] ?? 0.0).toDouble();
+        final nextReturn = (next['xirr'] ?? next['annualized_return'] ?? next['cagr'] ?? 0.0).toDouble();
         return currReturn > nextReturn ? curr : next;
       });
     }
@@ -155,9 +152,10 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildBestPerformer(Map<String, dynamic> fund) {
-    final fundName = fund['fund_name'] ?? 'Unknown Fund';
-    final returnPct = (fund['xirr'] ?? fund['annualized_return'] ?? 0.0).toDouble();
-    final profit = (fund['profit'] ?? fund['total_profit'] ?? 0.0).toDouble();
+    // WIDE NET: Catching multiple possible name keys
+    final fundName = fund['fund_name'] ?? fund['scheme'] ?? fund['scheme_name'] ?? fund['name'] ?? 'Unknown Fund';
+    final returnPct = (fund['xirr'] ?? fund['annualized_return'] ?? fund['cagr'] ?? 0.0).toDouble();
+    final profit = (fund['profit'] ?? fund['total_profit'] ?? fund['unrealized_profit'] ?? 0.0).toDouble();
 
     return Card(
       elevation: 0,
@@ -236,15 +234,14 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildFundCard(Map<String, dynamic> fund) {
-    final fundName = fund['fund_name'] ?? 'Unknown Fund';
-    
-    // FIX: Restoring the official AMFI Subtext
+    // WIDE NET: Auto-detecting the correct keys
+    final fundName = fund['fund_name'] ?? fund['scheme'] ?? fund['scheme_name'] ?? fund['name'] ?? 'Unknown Fund';
     final subText = "MFAPI Official AMFI Lookup";
     
-    final currentValue = (fund['current_value'] ?? 0.0).toDouble();
-    final invested = (fund['invested_value'] ?? fund['invested'] ?? fund['total_invested'] ?? 0.0).toDouble();
-    final profit = (fund['profit'] ?? fund['total_profit'] ?? 0.0).toDouble();
-    final returnPct = (fund['xirr'] ?? fund['annualized_return'] ?? fund['absolute_return'] ?? 0.0).toDouble();
+    final currentValue = (fund['current_value'] ?? fund['value'] ?? 0.0).toDouble();
+    final invested = (fund['invested_value'] ?? fund['invested'] ?? fund['total_invested'] ?? fund['cost_value'] ?? fund['amount'] ?? 0.0).toDouble();
+    final profit = (fund['profit'] ?? fund['total_profit'] ?? fund['unrealized_profit'] ?? 0.0).toDouble();
+    final returnPct = (fund['xirr'] ?? fund['annualized_return'] ?? fund['absolute_return'] ?? fund['cagr'] ?? fund['return'] ?? 0.0).toDouble();
 
     return Card(
       elevation: 0,
@@ -312,7 +309,6 @@ class SummaryTab extends StatelessWidget {
   }
 
   String _formatCurrency(double value) {
-    // Format to insert commas at the thousands scale naturally
     return value.toStringAsFixed(2).replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]},',

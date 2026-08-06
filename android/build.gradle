@@ -9,15 +9,8 @@ rootProject.buildDir = '../build'
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
-subprojects {
-    project.evaluationDependsOn(':app')
-}
 
-tasks.register("clean", Delete) {
-    delete rootProject.buildDir
-}
-
-// This block forces all Flutter plugins (including file_picker) to compile with SDK 36
+// 1. We must apply the SDK fix BEFORE evaluation
 subprojects {
     afterEvaluate { project ->
         if (project.hasProperty('android')) {
@@ -26,4 +19,13 @@ subprojects {
             }
         }
     }
+}
+
+// 2. NOW we can safely tell Gradle to evaluate the app
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
 }

@@ -20,7 +20,6 @@ class _UploadScreenState extends State<UploadScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // Function to pick the PDF file
   Future<void> _pickFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -32,7 +31,7 @@ class _UploadScreenState extends State<UploadScreen> {
         setState(() {
           _selectedFile = File(result.files.single.path!);
           _fileName = result.files.single.name;
-          _errorMessage = null; // Clear previous errors
+          _errorMessage = null; 
         });
       }
     } catch (e) {
@@ -42,7 +41,6 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
-  // Function to upload and parse the CAS
   Future<void> _uploadAndParse() async {
     if (_selectedFile == null) {
       setState(() {
@@ -57,12 +55,10 @@ class _UploadScreenState extends State<UploadScreen> {
     });
 
     try {
-      // REPLACE with your actual Render / FastAPI backend URL
-      var uri = Uri.parse("https://your-api-url.onrender.com/api/v1/parse-cas"); 
+      var uri = Uri.parse("https://fundwise-backend.onrender.com/api/v1/parse-cas"); 
       
       var request = http.MultipartRequest('POST', uri);
       
-      // Add the file
       request.files.add(
         await http.MultipartFile.fromPath(
           'file',
@@ -70,10 +66,7 @@ class _UploadScreenState extends State<UploadScreen> {
         ),
       );
 
-      // Add the password form field
       request.fields['password'] = _passwordController.text;
-
-      // Add default tax parameters if needed by your API
       request.fields['ltcg_rate'] = '12.5';
       request.fields['stcg_rate'] = '20.0';
 
@@ -83,15 +76,11 @@ class _UploadScreenState extends State<UploadScreen> {
       if (response.statusCode == 200) {
         var responseData = json.decode(response.body);
         
-        // Pass data to the main dashboard to switch to Insights Tab
         if (widget.onParseSuccess != null) {
-          // The backend currently puts transactions in funds_breakdown or you can extract them
-          // Let's pass empty tx list if it's not explicitly in the root response yet
           List<dynamic> transactions = responseData['transactions'] ?? []; 
           widget.onParseSuccess!(responseData, transactions);
         }
 
-        // Clear selection after successful upload
         setState(() {
           _selectedFile = null;
           _fileName = null;
@@ -140,7 +129,6 @@ class _UploadScreenState extends State<UploadScreen> {
           children: [
             const SizedBox(height: 20),
             
-            // 1. Cloud Icon Header
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -168,7 +156,6 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
             const SizedBox(height: 32),
 
-            // 2. Password Input
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -202,7 +189,6 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 3. File Selection Box
             GestureDetector(
               onTap: _isLoading ? null : _pickFile,
               child: Container(
@@ -240,7 +226,6 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 4. Error Message Banner
             if (_errorMessage != null)
               Container(
                 width: double.infinity,
@@ -259,7 +244,6 @@ class _UploadScreenState extends State<UploadScreen> {
             
             if (_errorMessage != null) const SizedBox(height: 24),
 
-            // 5. Upload Button
             SizedBox(
               width: double.infinity,
               height: 54,

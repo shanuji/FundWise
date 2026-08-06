@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class CashflowsTab extends StatefulWidget {
+class CashflowsTab extends StatelessWidget {
   final List<dynamic> transactions;
 
   const CashflowsTab({
@@ -9,234 +9,124 @@ class CashflowsTab extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<CashflowsTab> createState() => _CashflowsTabState();
-}
-
-class _CashflowsTabState extends State<CashflowsTab> {
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Purchases', 'Redemptions', 'SIP', 'Lumpsum'];
-
-  // Helper to parse dates like "2026-04-05"
-  DateTime? _parseDate(String? dateStr) {
-    if (dateStr == null) return null;
-    try {
-      return DateTime.parse(dateStr);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // Helper to format month header (e.g., "APR 2026")
-  String _getMonthYear(DateTime date) {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return "${months[date.month - 1]} ${date.year}";
-  }
-
-  // Helper to format day and month for timeline (e.g., "05 Apr")
-  String _getDayMonth(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final day = date.day.toString().padLeft(2, '0');
-    return "$day ${months[date.month - 1]}";
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // 1. Calculate Summaries (Always based on ALL transactions)
-    double totalInvested = 0.0;
-    double totalRedeemed = 0.0;
-
-    for (var tx in widget.transactions) {
-      double amount = (tx['amount'] ?? 0.0).toDouble();
-      if (amount > 0) {
-        totalInvested += amount;
-      } else {
-        totalRedeemed += amount.abs();
-      }
+    if (transactions.isEmpty) {
+      return _buildEmptyState();
     }
-    double netInvestment = totalInvested - totalRedeemed;
 
-    // 2. Apply Filters
-    List<dynamic> filteredTx = widget.transactions.where((tx) {
-      double amount = (tx['amount'] ?? 0.0).toDouble();
-      bool isPurchase = amount > 0;
-      String type = (tx['type'] ?? '').toString().toLowerCase();
-
-      if (_selectedFilter == 'Purchases') return isPurchase;
-      if (_selectedFilter == 'Redemptions') return !isPurchase;
-      if (_selectedFilter == 'SIP') return type.contains('sip');
-      if (_selectedFilter == 'Lumpsum') return type.contains('lumpsum') || type.contains('fresh');
-      return true; // 'All'
-    }).toList();
-
-    // 3. Sort by Date Descending
-    filteredTx.sort((a, b) {
-      DateTime dateA = _parseDate(a['date']) ?? DateTime.now();
-      DateTime dateB = _parseDate(b['date']) ?? DateTime.now();
-      return dateB.compareTo(dateA);
+    // Sort transactions by date descending (newest first) if possible
+    final sortedTx = List.from(transactions)..sort((a, b) {
+      final dateA = a['date']?.toString() ?? '';
+      final dateB = b['date']?.toString() ?? '';
+      return dateB.compareTo(dateA); 
     });
 
-    // 4. Group by Month-Year
-    Map<String, List<dynamic>> groupedTx = {};
-    for (var tx in filteredTx) {
-      DateTime? date = _parseDate(tx['date']);
-      if (date != null) {
-        String monthYear = _getMonthYear(date);
-        if (!groupedTx.containsKey(monthYear)) {
-          groupedTx[monthYear] = [];
-        }
-        groupedTx[monthYear]!.add(tx);
-      }
-    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16.0),
+      itemCount: sortedTx.length,
+      itemBuilder: (context, index) {
+        return _buildTransactionCard(sortedTx[index]);
+      },
+    );
+  }
 
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: Column(
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Summary Cards
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Total Invested",
-                    amount: totalInvested,
-                    icon: Icons.arrow_upward,
-                    iconColor: Colors.green,
-                    bgColor: Colors.green.withOpacity(0.1),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Total Redeemed",
-                    amount: totalRedeemed,
-                    icon: Icons.arrow_downward,
-                    iconColor: Colors.red,
-                    bgColor: Colors.red.withOpacity(0.1),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Net Investment",
-                    amount: netInvestment,
-                    icon: Icons.bar_chart,
-                    iconColor: Theme.of(context).primaryColor,
-                    bgColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Filter Pills
-          SizedBox(
-            height: 40,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              scrollDirection: Axis.horizontal,
-              itemCount: _filters.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final filter = _filters[index];
-                final isSelected = _selectedFilter == filter;
-                return FilterChip(
-                  label: Text(filter, style: TextStyle(
-                    color: isSelected ? Theme.of(context).primaryColor : Colors.grey[700],
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 13
-                  )),
-                  selected: isSelected,
-                  onSelected: (bool selected) {
-                    setState(() {
-                      _selectedFilter = filter;
-                    });
-                  },
-                  backgroundColor: Colors.white,
-                  selectedColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(color: isSelected ? Theme.of(context).primaryColor : Colors.grey[300]!),
-                  ),
-                  showCheckmark: false,
-                );
-              },
-            ),
+          Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          Text(
+            "No Transactions Found",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800]),
           ),
           const SizedBox(height: 8),
-
-          // Timeline List
-          Expanded(
-            child: groupedTx.isEmpty
-                ? const Center(child: Text("No transactions found for this filter."))
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                    itemCount: groupedTx.length,
-                    itemBuilder: (context, index) {
-                      String monthYear = groupedTx.keys.elementAt(index);
-                      List<dynamic> monthTxs = groupedTx[monthYear]!;
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12.0),
-                            child: Text(
-                              monthYear,
-                              style: TextStyle(
-                                color: Theme.of(context).primaryColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          ...monthTxs.map((tx) => _buildTimelineItem(tx)).toList(),
-                        ],
-                      );
-                    },
-                  ),
+          Text(
+            "Your cashflow history will appear here.",
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryCard({
-    required String title,
-    required double amount,
-    required IconData icon,
-    required Color iconColor,
-    required Color bgColor,
-  }) {
+  Widget _buildTransactionCard(Map<String, dynamic> tx) {
+    final date = tx['date']?.toString() ?? 'Unknown Date';
+    final fundName = tx['fund_name']?.toString() ?? tx['scheme']?.toString() ?? 'Unknown Fund';
+    final type = tx['type']?.toString() ?? tx['description']?.toString() ?? 'Transaction';
+    final amount = (tx['amount'] ?? 0.0).toDouble();
+    final units = (tx['units'] ?? 0.0).toDouble();
+    final nav = (tx['nav'] ?? tx['price'] ?? 0.0).toDouble();
+
+    // Determine if this is an inflow (investment) or outflow (redemption)
+    final isInvestment = amount > 0 || type.toLowerCase().contains('buy') || type.toLowerCase().contains('purchase') || type.toLowerCase().contains('sip');
+    final displayAmount = amount.abs();
+    
+    final typeColor = isInvestment ? const Color(0xFF00BFA5) : Colors.redAccent;
+    final typeIcon = isInvestment ? Icons.call_made : Icons.call_received;
+
     return Card(
       elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+        side: BorderSide(color: Colors.grey[200]!),
       ),
+      color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-              child: Icon(icon, color: iconColor, size: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  date,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: typeColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(typeIcon, size: 12, color: typeColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        isInvestment ? "INVESTMENT" : "REDEMPTION",
+                        style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              title,
-              style: const TextStyle(fontSize: 10, color: Colors.grey),
-              textAlign: TextAlign.center,
-              maxLines: 1,
+              fundName,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
             Text(
-              "₹${_formatCurrency(amount)}",
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              type,
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildMetric("Amount", "₹${_formatCurrency(displayAmount)}", isInvestment ? Colors.black87 : Colors.redAccent),
+                _buildMetric("NAV", "₹${_formatCurrency(nav)}", Colors.black87),
+                _buildMetric("Units", units.toStringAsFixed(3), Colors.black87, crossAxisAlignment: CrossAxisAlignment.end),
+              ],
             ),
           ],
         ),
@@ -244,90 +134,21 @@ class _CashflowsTabState extends State<CashflowsTab> {
     );
   }
 
-  Widget _buildTimelineItem(dynamic tx) {
-    DateTime? date = _parseDate(tx['date']);
-    double amount = (tx['amount'] ?? 0.0).toDouble();
-    bool isPurchase = amount > 0;
-    String schemeName = tx['scheme_name'] ?? 'Unknown Fund';
-    String type = tx['type'] ?? (isPurchase ? 'Purchase' : 'Redemption');
-    
-    Color typeColor = isPurchase ? Colors.green : Colors.red;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildMetric(String label, String value, Color valueColor, {CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.start}) {
+    return Column(
+      crossAxisAlignment: crossAxisAlignment,
       children: [
-        // Left Column: Date & Timeline Line
-        SizedBox(
-          width: 50,
-          child: Column(
-            children: [
-              Text(
-                date != null ? _getDayMonth(date) : "",
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: typeColor, shape: BoxShape.circle),
-              ),
-              Container(
-                width: 2,
-                height: 50, // Line connecting to the next item
-                color: Colors.grey[300],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Right Column: Transaction Card
-        Expanded(
-          child: Card(
-            elevation: 0.5,
-            margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          schemeName,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          type,
-                          style: const TextStyle(color: Colors.grey, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    "${isPurchase ? '' : '-'}₹${_formatCurrency(amount.abs())}",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: typeColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: valueColor, fontSize: 14, fontWeight: FontWeight.bold)),
       ],
     );
   }
 
   String _formatCurrency(double value) {
-    return value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return value.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
   }
 }

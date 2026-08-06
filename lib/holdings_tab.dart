@@ -32,7 +32,6 @@ class HoldingsTab extends StatelessWidget {
   }
 
   Widget _buildHoldingCard(Map<String, dynamic> fund, double totalPortfolioValue) {
-    // FIXED: Added wide net mapping and missing UI variables
     final fundName = fund['fund_name'] ?? fund['scheme'] ?? fund['scheme_name'] ?? fund['name'] ?? 'Unknown Fund';
     final currentValue = (fund['current_value'] ?? fund['value'] ?? 0.0).toDouble();
     final invested = (fund['invested_value'] ?? fund['invested'] ?? fund['total_invested'] ?? 0.0).toDouble();
@@ -68,7 +67,6 @@ class HoldingsTab extends StatelessWidget {
             const SizedBox(height: 16),
             LinearProgressIndicator(value: allocationPct / 100, backgroundColor: Colors.grey[100], color: Colors.deepPurple, minHeight: 6, borderRadius: BorderRadius.circular(4)),
             const SizedBox(height: 16),
-            // FIXED: Added Invested and Profit into the layout alongside Current Value
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

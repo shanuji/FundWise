@@ -1,16 +1,62 @@
 import 'package:flutter/material.dart';
-import 'tax_settings_screen.dart';
+import 'dart:math';
 
-class SettingsTab extends StatelessWidget {
-  const SettingsTab({Key? key}) : super(key: key);
+class SettingsTab extends StatefulWidget {
+  final Map<String, dynamic> parsedData;
+
+  const SettingsTab({
+    Key? key,
+    required this.parsedData,
+  }) : super(key: key);
+
+  @override
+  State<SettingsTab> createState() => _SettingsTabState();
+}
+
+class _SettingsTabState extends State<SettingsTab> {
+  // Controllers for tax settings
+  final TextEditingController _ltcgController = TextEditingController(text: "12.5");
+  final TextEditingController _stcgController = TextEditingController(text: "20.0");
+  final TextEditingController _exemptionController = TextEditingController(text: "125000");
+
+  @override
+  void dispose() {
+    _ltcgController.dispose();
+    _stcgController.dispose();
+    _exemptionController.dispose();
+    super.dispose();
+  }
+
+  void _onSettingChanged(String value) {
+    // Trigger a rebuild when settings change so the tax liability updates instantly
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Extract profits from the backend response safely
+    final portfolioSummary = widget.parsedData['portfolio_summary'] ?? {};
+    
+    // Check multiple possible keys your backend might send for STCG and LTCG
+    final double stcgProfit = (portfolioSummary['stcg'] ?? portfolioSummary['stcg_profit'] ?? portfolioSummary['short_term_capital_gains'] ?? 0.0).toDouble();
+    final double ltcgProfit = (portfolioSummary['ltcg'] ?? portfolioSummary['ltcg_profit'] ?? portfolioSummary['long_term_capital_gains'] ?? 0.0).toDouble();
+
+    // Parse rates from controllers with fallbacks
+    final double ltcgRate = double.tryParse(_ltcgController.text) ?? 12.5;
+    final double stcgRate = double.tryParse(_stcgController.text) ?? 20.0;
+    final double exemption = double.tryParse(_exemptionController.text) ?? 125000.0;
+
+    // Calculate Taxes
+    final double stcgTax = stcgProfit > 0 ? (stcgProfit * (stcgRate / 100)) : 0.0;
+    final double taxableLtcg = ltcgProfit > exemption ? (ltcgProfit - exemption) : 0.0;
+    final double ltcgTax = taxableLtcg > 0 ? (taxableLtcg * (ltcgRate / 100)) : 0.0;
+    final double totalTax = stcgTax + ltcgTax;
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
-          "Settings",
+          "Tax Calculation",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
         ),
         backgroundColor: Colors.white,
@@ -20,58 +66,94 @@ class SettingsTab extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          _buildProfileCard(context),
-          const SizedBox(height: 24),
-
+          _buildHeroTaxCard(totalTax),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _buildTaxDetailCard("STCG Liability", stcgProfit, stcgTax, Colors.orange)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildTaxDetailCard("LTCG Liability", ltcgProfit, ltcgTax, Colors.blue)),
+            ],
+          ),
+          const SizedBox(height: 32),
           const Padding(
             padding: EdgeInsets.only(left: 4.0),
             child: Text(
-              "App Configuration",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+              "Tax Parameters",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
             ),
           ),
-          const SizedBox(height: 12),
-
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.only(left: 4.0),
+            child: Text(
+              "Adjust the parameters below to instantly recalculate your tax liability.",
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ),
+          const SizedBox(height: 16),
           _buildSettingsMenu(context),
         ],
       ),
     );
   }
 
-  Widget _buildProfileCard(BuildContext context) {
+  Widget _buildHeroTaxCard(double totalTax) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE53935), Color(0xFFC62828)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFC62828).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Estimated Total Tax Liability", style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13)),
+          const SizedBox(height: 8),
+          Text(
+            "₹${_formatCurrency(totalTax)}",
+            style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaxDetailCard(String title, double profit, double tax, MaterialColor color) {
     return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Row(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.person,
-                size: 32,
-                color: Theme.of(context).primaryColor,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Investor Account",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "PAN: ABCDE****F",
-                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                ),
-              ],
+            Text(title, style: TextStyle(color: color[700], fontSize: 12, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            const Text("Taxable Profit", style: TextStyle(color: Colors.grey, fontSize: 11)),
+            const SizedBox(height: 2),
+            Text("₹${_formatCurrency(profit)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(height: 12),
+            const Text("Tax Amount", style: TextStyle(color: Colors.grey, fontSize: 11)),
+            const SizedBox(height: 2),
+            Text(
+              "₹${_formatCurrency(tax)}",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color[700]),
             ),
           ],
         ),
@@ -81,66 +163,95 @@ class SettingsTab extends StatelessWidget {
 
   Widget _buildSettingsMenu(BuildContext context) {
     return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        children: [
-          _buildSettingsTile(
-            context,
-            icon: Icons.tune,
-            title: "Tax Parameters",
-            subtitle: "Adjust LTCG, STCG, and exemption limits",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const TaxSettingsScreen()),
-              );
-            },
-          ),
-          const Divider(height: 1, indent: 56), 
-          _buildSettingsTile(
-            context,
-            icon: Icons.security,
-            title: "Security & Privacy",
-            subtitle: "Biometric lock & local storage options",
-            onTap: () {},
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildSettingsTile(
-            context,
-            icon: Icons.help_outline,
-            title: "Help & CAS FAQ",
-            subtitle: "How CAMS & KFintech statements work",
-            onTap: () {},
-          ),
-        ],
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildInputField(
+              context,
+              controller: _stcgController,
+              label: "STCG Rate (%)",
+              icon: Icons.trending_flat,
+            ),
+            const SizedBox(height: 20),
+            _buildInputField(
+              context,
+              controller: _ltcgController,
+              label: "LTCG Rate (%)",
+              icon: Icons.trending_up,
+            ),
+            const SizedBox(height: 20),
+            _buildInputField(
+              context,
+              controller: _exemptionController,
+              label: "LTCG Exemption Limit (₹)",
+              icon: Icons.money_off,
+              isCurrency: true,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSettingsTile(
+  Widget _buildInputField(
     BuildContext context, {
+    required TextEditingController controller,
+    required String label,
     required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
+    bool isCurrency = false,
   }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: Icon(icon, color: Theme.of(context).primaryColor),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4.0),
-        child: Text(
-          subtitle,
-          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).primaryColor,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-      ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: onTap,
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onChanged: _onSettingChanged, // Instantly update taxes when changed
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: Theme.of(context).primaryColor),
+            suffixText: isCurrency ? "₹" : "%",
+            suffixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+            filled: true,
+            fillColor: Colors.grey[50],
+            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCurrency(double value) {
+    return value.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
     );
   }
 }

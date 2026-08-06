@@ -4,51 +4,53 @@ import 'cashflows_tab.dart';
 import 'holdings_tab.dart';
 
 class InsightsScreen extends StatelessWidget {
-  // This expects the full JSON response map from your FastAPI backend
-  final Map<String, dynamic> parsedData; 
-  final List<dynamic> transactions; // Pass the flat list of transactions here
+  final Map<String, dynamic> parsedData;
+  final List<dynamic> transactions;
 
   const InsightsScreen({
-    Key? key, 
+    Key? key,
     required this.parsedData,
     required this.transactions,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Extract the main data blocks from your backend response
+    // Safely extract the required dictionaries and lists to pass down to the tabs
     final portfolioSummary = parsedData['portfolio_summary'] ?? {};
-    final fundsList = parsedData['funds_breakdown'] ?? [];
-    final statementPeriodInfo = parsedData['statement_period'] ?? {};
-    final statementPeriod = "${statementPeriodInfo['from'] ?? ''} - ${statementPeriodInfo['to'] ?? ''}";
+    final fundsList = parsedData['funds'] ?? parsedData['funds_breakdown'] ?? [];
+    
+    // Extract statement period for the Summary tab
+    final statementPeriodInfo = portfolioSummary['statement_period'] ?? {};
+    final fromDate = statementPeriodInfo['from']?.toString() ?? 'Unknown Date';
+    final toDate = statementPeriodInfo['to']?.toString() ?? 'Unknown Date';
+    final statementPeriod = "$fromDate to $toDate";
 
     return DefaultTabController(
-      length: 3, // Summary, Cashflows, Holdings
+      length: 3,
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0.5,
-          centerTitle: true,
           title: const Text(
             "Detailed Breakdown",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 18),
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
           ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.black54),
+              icon: const Icon(Icons.info_outline, color: Colors.grey),
               onPressed: () {
-                // TODO: Show info tooltip or dialog
+                // Info tooltip placeholder
               },
-            )
+            ),
           ],
           bottom: TabBar(
             labelColor: Theme.of(context).primaryColor,
             unselectedLabelColor: Colors.grey,
             indicatorColor: Theme.of(context).primaryColor,
             indicatorWeight: 3,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
             tabs: const [
               Tab(text: "Summary"),
               Tab(text: "Cashflows"),
@@ -58,19 +60,14 @@ class InsightsScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            // 1. Summary Tab
             SummaryTab(
               portfolioSummary: portfolioSummary,
               fundsList: fundsList,
               statementPeriod: statementPeriod,
             ),
-            
-            // 2. Cashflows Tab
             CashflowsTab(
               transactions: transactions,
             ),
-            
-            // 3. Holdings Tab
             HoldingsTab(
               portfolioSummary: portfolioSummary,
               fundsList: fundsList,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'tax_settings_screen.dart';
 
 class SettingsTab extends StatelessWidget {
   const SettingsTab({Key? key}) : super(key: key);
@@ -19,11 +20,9 @@ class SettingsTab extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // 1. Investor Account Card
           _buildProfileCard(context),
           const SizedBox(height: 24),
 
-          // 2. App Configuration Section Header
           const Padding(
             padding: EdgeInsets.only(left: 4.0),
             child: Text(
@@ -33,7 +32,6 @@ class SettingsTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // 3. Settings Menu Options
           _buildSettingsMenu(context),
         ],
       ),
@@ -93,18 +91,19 @@ class SettingsTab extends StatelessWidget {
             title: "Tax Parameters",
             subtitle: "Adjust LTCG, STCG, and exemption limits",
             onTap: () {
-              // TODO: Navigate to tax_settings_screen.dart
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TaxSettingsScreen()),
+              );
             },
           ),
-          const Divider(height: 1, indent: 56), // Indented to match icon alignment
+          const Divider(height: 1, indent: 56), 
           _buildSettingsTile(
             context,
             icon: Icons.security,
             title: "Security & Privacy",
             subtitle: "Biometric lock & local storage options",
-            onTap: () {
-              // TODO: Implement security options
-            },
+            onTap: () {},
           ),
           const Divider(height: 1, indent: 56),
           _buildSettingsTile(
@@ -112,9 +111,7 @@ class SettingsTab extends StatelessWidget {
             icon: Icons.help_outline,
             title: "Help & CAS FAQ",
             subtitle: "How CAMS & KFintech statements work",
-            onTap: () {
-              // TODO: Open FAQ page or webview
-            },
+            onTap: () {},
           ),
         ],
       ),

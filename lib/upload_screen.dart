@@ -55,8 +55,7 @@ class _UploadScreenState extends State<UploadScreen> {
     });
 
     try {
-      var uri = Uri.parse("https://fundwise-backend-coow.onrender.com/api/v1/parse-cas");
- 
+      var uri = Uri.parse("https://fundwise-backend-coow.onrender.com/api/v1/parse-cas"); 
       
       var request = http.MultipartRequest('POST', uri);
       
@@ -78,7 +77,8 @@ class _UploadScreenState extends State<UploadScreen> {
         var responseData = json.decode(response.body);
         
         if (widget.onParseSuccess != null) {
-          List<dynamic> transactions = responseData['transactions'] ?? []; 
+          // WIDE NET: Catching multiple possible keys for the transactions list
+          List<dynamic> transactions = responseData['transactions'] ?? responseData['cas_transactions'] ?? responseData['history'] ?? []; 
           widget.onParseSuccess!(responseData, transactions);
         }
 

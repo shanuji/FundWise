@@ -1,49 +1,116 @@
 import 'package:flutter/material.dart';
-import 'upload_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:io';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({Key? key}) : super(key: key);
+  final Function(Map<String, dynamic>, List<dynamic>)? onParseSuccess;
+
+  const UploadScreen({Key? key, this.onParseSuccess}) : super(key: key);
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
 }
 
 class _UploadScreenState extends State<UploadScreen> {
-  final StatementUploadService _uploadService = StatementUploadService();
   final TextEditingController _passwordController = TextEditingController();
+  File? _selectedFile;
+  String? _fileName;
   bool _isLoading = false;
   String? _errorMessage;
 
-  void _handleUpload() async {
+  // Function to pick the PDF file
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _selectedFile = File(result.files.single.path!);
+          _fileName = result.files.single.name;
+          _errorMessage = null; // Clear previous errors
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Failed to pick file: $e";
+      });
+    }
+  }
+
+  // Function to upload and parse the CAS
+  Future<void> _uploadAndParse() async {
+    if (_selectedFile == null) {
+      setState(() {
+        _errorMessage = "Please select a PDF file first.";
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      // Sends the password if typed, or an empty string if left blank
-      final result = await _uploadService.uploadAndProcessPDF(
-        password: _passwordController.text.trim(),
+      // REPLACE with your actual Render / FastAPI backend URL
+      var uri = Uri.parse("https://your-api-url.onrender.com/api/v1/parse-cas"); 
+      
+      var request = http.MultipartRequest('POST', uri);
+      
+      // Add the file
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          _selectedFile!.path,
+        ),
       );
 
-      if (result != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Statement processed successfully!')),
-        );
-        Navigator.pop(context, result);
+      // Add the password form field
+      request.fields['password'] = _passwordController.text;
+
+      // Add default tax parameters if needed by your API
+      request.fields['ltcg_rate'] = '12.5';
+      request.fields['stcg_rate'] = '20.0';
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        var responseData = json.decode(response.body);
+        
+        // Pass data to the main dashboard to switch to Insights Tab
+        if (widget.onParseSuccess != null) {
+          // The backend currently puts transactions in funds_breakdown or you can extract them
+          // Let's pass empty tx list if it's not explicitly in the root response yet
+          List<dynamic> transactions = responseData['transactions'] ?? []; 
+          widget.onParseSuccess!(responseData, transactions);
+        }
+
+        // Clear selection after successful upload
+        setState(() {
+          _selectedFile = null;
+          _fileName = null;
+          _passwordController.clear();
+        });
+      } else {
+        var errorBody = json.decode(response.body);
+        setState(() {
+          _errorMessage = errorBody['detail'] ?? "CAS Parse Failed. Please try again.";
+        });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
-        });
-      }
+      setState(() {
+        _errorMessage = "Network Error: Could not connect to the server.";
+      });
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -56,103 +123,166 @@ class _UploadScreenState extends State<UploadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
+        title: const Text(
+          "Upload Statement",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
         ),
-        title: const Text('Upload Statement', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 20),
+            
+            // 1. Cloud Icon Header
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF5D52D7).withOpacity(0.1),
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.cloud_upload, size: 64, color: Color(0xFF5D52D7)),
+              child: Icon(
+                Icons.cloud_upload,
+                size: 64,
+                color: Theme.of(context).primaryColor,
+              ),
             ),
             const SizedBox(height: 24),
+            
             const Text(
-              'Upload your Mutual Fund statement',
+              "Upload your Mutual Fund statement",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Supported formats: CAMS/KFintech PDF',
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+            Text(
+              "Supported formats: CAMS/KFintech PDF",
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            
-            // Password Field Option
+
+            // 2. Password Input
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "PDF Password (Optional)",
+                style: TextStyle(fontSize: 13, color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _passwordController,
-              obscureText: true, // Hides the password dots
+              obscureText: true,
               decoration: InputDecoration(
-                labelText: 'PDF Password (Optional)',
-                hintText: 'Leave blank if unprotected',
-                prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF5D52D7)),
+                prefixIcon: Icon(Icons.lock_outline, color: Theme.of(context).primaryColor),
+                hintText: "••••••••••",
                 filled: true,
                 fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                 ),
               ),
             ),
             const SizedBox(height: 24),
 
-            // Tap to Upload Area
+            // 3. File Selection Box
             GestureDetector(
-              onTap: _isLoading ? null : _handleUpload,
+              onTap: _isLoading ? null : _pickFile,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 40),
+                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF5D52D7).withOpacity(0.3), width: 1.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _selectedFile != null ? Colors.green : Theme.of(context).primaryColor.withOpacity(0.3),
+                    width: 2,
+                  ),
                 ),
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF5D52D7)))
-                    : const Column(
-                        children: [
-                          Icon(Icons.picture_as_pdf, size: 40, color: Color(0xFF5D52D7)),
-                          SizedBox(height: 12),
-                          Text('Tap to select PDF', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          SizedBox(height: 4),
-                          Text('Max file size: 10MB', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        ],
-                      ),
+                child: Column(
+                  children: [
+                    Icon(
+                      _selectedFile != null ? Icons.check_circle : Icons.picture_as_pdf,
+                      size: 48,
+                      color: _selectedFile != null ? Colors.green : Theme.of(context).primaryColor,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _selectedFile != null ? _fileName! : "Tap to select PDF",
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedFile != null ? "Ready to parse" : "Max file size: 10MB",
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
               ),
             ),
+            const SizedBox(height: 24),
 
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 20),
+            // 4. Error Message Banner
+            if (_errorMessage != null)
               Container(
-                padding: const EdgeInsets.all(12),
                 width: double.infinity,
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
+                  color: Colors.red[50],
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.shade200),
+                  border: Border.all(color: Colors.red[200]!),
                 ),
                 child: Text(
                   _errorMessage!,
-                  style: TextStyle(color: Colors.red.shade800, fontSize: 13),
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
               ),
-            ]
+            
+            if (_errorMessage != null) const SizedBox(height: 24),
+
+            // 5. Upload Button
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _uploadAndParse,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                      )
+                    : const Text(
+                        "Analyze Statement",
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+              ),
+            ),
           ],
         ),
       ),

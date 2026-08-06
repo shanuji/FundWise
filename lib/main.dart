@@ -55,8 +55,8 @@ class _MainDashboardState extends State<MainDashboard> {
       // 0: Home / Upload
       UploadScreen(onParseSuccess: _onDataParsed), 
       
-      // 1: History
-      const HistoryScreen(),
+      // 1: History (Removed 'const' here to fix the build error)
+      HistoryScreen(),
       
       // 2: Insights 
       InsightsScreen(

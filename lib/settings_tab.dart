@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 
 class SettingsTab extends StatefulWidget {
   final Map<String, dynamic> parsedData;
@@ -14,7 +13,6 @@ class SettingsTab extends StatefulWidget {
 }
 
 class _SettingsTabState extends State<SettingsTab> {
-  // Controllers for tax settings
   final TextEditingController _ltcgController = TextEditingController(text: "12.5");
   final TextEditingController _stcgController = TextEditingController(text: "20.0");
   final TextEditingController _exemptionController = TextEditingController(text: "125000");
@@ -28,25 +26,21 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   void _onSettingChanged(String value) {
-    // Trigger a rebuild when settings change so the tax liability updates instantly
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    // Extract profits from the backend response safely
     final portfolioSummary = widget.parsedData['portfolio_summary'] ?? {};
     
-    // Check multiple possible keys your backend might send for STCG and LTCG
-    final double stcgProfit = (portfolioSummary['stcg'] ?? portfolioSummary['stcg_profit'] ?? portfolioSummary['short_term_capital_gains'] ?? 0.0).toDouble();
-    final double ltcgProfit = (portfolioSummary['ltcg'] ?? portfolioSummary['ltcg_profit'] ?? portfolioSummary['long_term_capital_gains'] ?? 0.0).toDouble();
+    // WIDE NET: Catching tax keys
+    final double stcgProfit = (portfolioSummary['stcg'] ?? portfolioSummary['stcg_profit'] ?? portfolioSummary['short_term_capital_gains'] ?? portfolioSummary['short_term_taxable'] ?? 0.0).toDouble();
+    final double ltcgProfit = (portfolioSummary['ltcg'] ?? portfolioSummary['ltcg_profit'] ?? portfolioSummary['long_term_capital_gains'] ?? portfolioSummary['long_term_taxable'] ?? 0.0).toDouble();
 
-    // Parse rates from controllers with fallbacks
     final double ltcgRate = double.tryParse(_ltcgController.text) ?? 12.5;
     final double stcgRate = double.tryParse(_stcgController.text) ?? 20.0;
     final double exemption = double.tryParse(_exemptionController.text) ?? 125000.0;
 
-    // Calculate Taxes
     final double stcgTax = stcgProfit > 0 ? (stcgProfit * (stcgRate / 100)) : 0.0;
     final double taxableLtcg = ltcgProfit > exemption ? (ltcgProfit - exemption) : 0.0;
     final double ltcgTax = taxableLtcg > 0 ? (taxableLtcg * (ltcgRate / 100)) : 0.0;
@@ -222,7 +216,7 @@ class _SettingsTabState extends State<SettingsTab> {
         TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: _onSettingChanged, // Instantly update taxes when changed
+          onChanged: _onSettingChanged, 
           decoration: InputDecoration(
             prefixIcon: Icon(icon, color: Theme.of(context).primaryColor),
             suffixText: isCurrency ? "₹" : "%",

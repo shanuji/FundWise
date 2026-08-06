@@ -55,7 +55,8 @@ class _UploadScreenState extends State<UploadScreen> {
     });
 
     try {
-      var uri = Uri.parse("https://fundwise-backend-coow.onrender.com/api/v1/parse-cas"); 
+      var uri = Uri.parse("https://fundwise-backend-coow.onrender.com/api/v1/parse-cas");
+ 
       
       var request = http.MultipartRequest('POST', uri);
       

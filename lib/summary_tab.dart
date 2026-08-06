@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-// Note: We will create FundDetailsScreen in the next step
-// import 'fund_details_screen.dart'; 
+import 'fund_details_screen.dart'; // Links to the details screen you just created
 
 class SummaryTab extends StatelessWidget {
   final Map<String, dynamic> portfolioSummary;
   final List<dynamic> fundsList;
+  final String statementPeriod; // Added to pass down to the details screen
 
   const SummaryTab({
     Key? key,
     required this.portfolioSummary,
     required this.fundsList,
+    this.statementPeriod = "01 Apr 2025 - Live", // Default fallback
   }) : super(key: key);
 
   @override
@@ -155,7 +156,16 @@ class SummaryTab extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () {
-          // TODO: Navigate to Fund Details Screen
+          // Navigate to the Fund Details Screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FundDetailsScreen(
+                fund: fund,
+                statementPeriod: statementPeriod,
+              ),
+            ),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -229,7 +239,16 @@ class SummaryTab extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          // TODO: Navigate to Fund Details Screen
+          // Navigate to the Fund Details Screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FundDetailsScreen(
+                fund: fund,
+                statementPeriod: statementPeriod,
+              ),
+            ),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -282,8 +301,6 @@ class SummaryTab extends StatelessWidget {
   }
 
   String _formatCurrency(double value) {
-    // Simple formatting. For robust Indian Rupee formatting in Flutter, 
-    // consider adding the `intl` package and using NumberFormat.currency(locale: 'en_IN')
     return value.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
   }
 }

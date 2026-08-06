@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 // Import all your screens
-import 'upload_screen.dart'; // Assuming this is your "Home" page for parsing
+import 'upload_screen.dart'; 
 import 'history_screen.dart';
 import 'insights_screen.dart';
 import 'settings_tab.dart';
@@ -38,13 +38,9 @@ class MainDashboard extends StatefulWidget {
 class _MainDashboardState extends State<MainDashboard> {
   int _currentIndex = 0;
 
-  // Placeholder for the parsed data. 
-  // Once the user uploads a statement on the Home (Upload) tab, 
-  // you will update this state and it will feed into the Insights tab.
   Map<String, dynamic> _parsedData = {};
   List<dynamic> _transactions = [];
 
-  // This function allows the UploadScreen to pass data back to the Dashboard
   void _onDataParsed(Map<String, dynamic> data, List<dynamic> txs) {
     setState(() {
       _parsedData = data;
@@ -55,24 +51,23 @@ class _MainDashboardState extends State<MainDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // Define the 4 main screens for the bottom navigation
     final List<Widget> screens = [
       // 0: Home / Upload
-      // Replace UploadScreen with your actual home widget name if different.
-      // Pass the callback so it can update the dashboard when parsing finishes.
       UploadScreen(onParseSuccess: _onDataParsed), 
       
       // 1: History
-      HistoryScreen(),
+      const HistoryScreen(),
       
-      // 2: Insights (Passes the data we hold in state)
+      // 2: Insights 
       InsightsScreen(
         parsedData: _parsedData,
         transactions: _transactions,
       ),
       
-      // 3: Settings (Profile)
-      const SettingsTab(),
+      // 3: Taxes (Passed parsedData to calculate liabilities)
+      SettingsTab(
+        parsedData: _parsedData,
+      ),
     ];
 
     return Scaffold(
@@ -103,9 +98,9 @@ class _MainDashboardState extends State<MainDashboard> {
             label: 'Insights',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFF5E35B1)),
-            label: 'Profile',
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long, color: Color(0xFF5E35B1)),
+            label: 'Taxes',
           ),
         ],
       ),

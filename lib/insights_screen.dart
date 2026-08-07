@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'summary_tab.dart';
 import 'cashflows_tab.dart';
 import 'holdings_tab.dart';
@@ -13,16 +14,25 @@ class InsightsScreen extends StatelessWidget {
     required this.transactions,
   }) : super(key: key);
 
+  String _formatDate(String dateStr) {
+    if (dateStr == 'N/A' || dateStr.isEmpty) return 'N/A';
+    try {
+      final DateTime parsed = DateTime.parse(dateStr);
+      return DateFormat('d MMM yyyy').format(parsed);
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final portfolioSummary = parsedData['portfolio_summary'] ?? {};
-    final fundsList = parsedData['funds_breakdown'] ?? parsedData['funds'] ?? [];
+    final fundsList = parsedData['funds_breakdown'] ?? [];
     
-    // FIX: Read statement_period directly from the root parsedData object, not portfolio_summary
     final statementPeriodInfo = parsedData['statement_period'] ?? {};
-    final fromDate = statementPeriodInfo['from']?.toString() ?? 'N/A';
-    final toDate = statementPeriodInfo['to']?.toString() ?? 'N/A';
-    final statementPeriod = "$fromDate to $toDate";
+    final fromDate = _formatDate(statementPeriodInfo['from']?.toString() ?? 'N/A');
+    final toDate = _formatDate(statementPeriodInfo['to']?.toString() ?? 'N/A');
+    final statementPeriod = "$fromDate – $toDate";
 
     return DefaultTabController(
       length: 3,

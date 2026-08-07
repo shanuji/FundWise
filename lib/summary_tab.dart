@@ -20,63 +20,71 @@ class SummaryTab extends StatefulWidget {
 class _SummaryTabState extends State<SummaryTab> {
   String _sortOption = 'Current Value';
 
+  Color _getValueColor(double? value) {
+    if (value == null || value == 0.0) return Colors.grey;
+    return value > 0.0 ? const Color(0xFF00BFA5) : Colors.redAccent;
+  }
+
+  String _formatCurrency(double? value) {
+    if (value == null) return "N/A";
+    return NumberFormat.currency(locale: "en_IN", symbol: "₹").format(value);
+  }
+
+  String _formatPercent(double? value) {
+    if (value == null) return "N/A";
+    String prefix = value > 0 ? "+" : "";
+    return "$prefix${value.toStringAsFixed(2)}%";
+  }
+
   @override
   Widget build(BuildContext context) {
-    // STRICT MAP: Exact keys from portfolio_summary only.
-    final currentValue = (widget.portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
-    final totalProfit = (widget.portfolioSummary['total_profit'] ?? 0.0).toDouble();
-    final netCapitalDeployed = (widget.portfolioSummary['total_capital_deployed'] ?? 0.0).toDouble();
-    final statementReturn = (widget.portfolioSummary['statement_annualized_return'] ?? 0.0).toDouble();
+    final currentValue = (widget.portfolioSummary['current_portfolio_value'] as num?)?.toDouble();
+    final totalProfit = (widget.portfolioSummary['total_profit'] as num?)?.toDouble();
+    final netCapitalDeployed = (widget.portfolioSummary['total_capital_deployed'] as num?)?.toDouble();
+    final statementReturn = (widget.portfolioSummary['statement_annualized_return'] as num?)?.toDouble();
+    final benchmarkReturn = (widget.portfolioSummary['benchmark_annualized_return'] as num?)?.toDouble();
     
-    // BENCHMARK STRICT LOGIC
-    final benchmarkReturn = widget.portfolioSummary['benchmark_annualized_return'];
-    final benchmarkStatus = widget.portfolioSummary['benchmark_status']?.toString();
     String benchmarkText = "Benchmark Unavailable";
-    if (benchmarkStatus == "Available" && benchmarkReturn != null) {
-      benchmarkText = "Nifty 50: ${(benchmarkReturn as num).toDouble().toStringAsFixed(2)}%";
+    if (benchmarkReturn != null) {
+      benchmarkText = "Nifty 50: ${_formatPercent(benchmarkReturn)}";
     }
 
     final validFunds = widget.fundsList.where((fund) {
-      final cVal = (fund['current_value'] ?? 0.0).toDouble();
-      final units = (fund['units'] ?? 0.0).toDouble();
-      final isRedeemed = fund['is_fully_redeemed'] == true;
-      return cVal >= 1.0 && units >= 0.001 && !isRedeemed;
+      final cVal = (fund['current_value'] as num?)?.toDouble();
+      if (cVal == null || cVal < 1.0) return false;
+      return true;
     }).toList();
 
-    // DYNAMIC SORTING
     final sortedFunds = List.from(validFunds)..sort((a, b) {
       if (_sortOption == 'Alphabetical') {
         final nameA = (a['scheme_name'] ?? '').toString();
         final nameB = (b['scheme_name'] ?? '').toString();
         return nameA.compareTo(nameB);
       } else if (_sortOption == 'Profit') {
-        final valA = (a['absolute_profit'] ?? 0.0).toDouble();
-        final valB = (b['absolute_profit'] ?? 0.0).toDouble();
+        final valA = (a['absolute_profit'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['absolute_profit'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else if (_sortOption == 'Statement Return') {
-        final valA = (a['statement_annualized_return'] ?? 0.0).toDouble();
-        final valB = (b['statement_annualized_return'] ?? 0.0).toDouble();
+        final valA = (a['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else {
-        final valA = (a['current_value'] ?? 0.0).toDouble();
-        final valB = (b['current_value'] ?? 0.0).toDouble();
+        final valA = (a['current_value'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['current_value'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       }
     });
 
-    // BEST PERFORMER STRICT LOGIC (cVal >= 5000 & non-null return)
     Map<String, dynamic>? bestPerformer;
     if (sortedFunds.isNotEmpty) {
       final candidates = sortedFunds.where((fund) {
-        final cVal = (fund['current_value'] ?? 0.0).toDouble();
-        final ret = fund['statement_annualized_return'];
-        return cVal >= 5000.0 && ret != null;
+        return fund['statement_annualized_return'] != null;
       }).toList();
 
       if (candidates.isNotEmpty) {
         bestPerformer = candidates.reduce((curr, next) {
-          final currReturn = (curr['statement_annualized_return'] ?? -999.0).toDouble();
-          final nextReturn = (next['statement_annualized_return'] ?? -999.0).toDouble();
+          final currReturn = (curr['statement_annualized_return'] as num?)?.toDouble() ?? -999999.0;
+          final nextReturn = (next['statement_annualized_return'] as num?)?.toDouble() ?? -999999.0;
           return currReturn > nextReturn ? curr : next;
         });
       }
@@ -87,7 +95,6 @@ class _SummaryTabState extends State<SummaryTab> {
       children: [
         _buildPortfolioSnapshot(currentValue, totalProfit, netCapitalDeployed, statementReturn, benchmarkText),
         const SizedBox(height: 8),
-        // RENDER STATEMENT PERIOD
         Center(
           child: Text(
             "Statement Period: ${widget.statementPeriod}",
@@ -104,7 +111,6 @@ class _SummaryTabState extends State<SummaryTab> {
               "Funds Breakdown",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
             ),
-            // SORT DROPDOWN
             DropdownButton<String>(
               value: _sortOption,
               icon: const Icon(Icons.arrow_drop_down, color: Colors.deepPurple),
@@ -133,7 +139,7 @@ class _SummaryTabState extends State<SummaryTab> {
     );
   }
 
-  Widget _buildPortfolioSnapshot(double currentValue, double totalProfit, double netCapitalDeployed, double statementReturn, String benchmarkText) {
+  Widget _buildPortfolioSnapshot(double? currentValue, double? totalProfit, double? netCapitalDeployed, double? statementReturn, String benchmarkText) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -182,8 +188,8 @@ class _SummaryTabState extends State<SummaryTab> {
                   Text("Total Profit", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(
-                    totalProfit > 0 ? "+${_formatCurrency(totalProfit)}" : _formatCurrency(totalProfit),
-                    style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 18, fontWeight: FontWeight.bold),
+                    (totalProfit != null && totalProfit > 0) ? "+${_formatCurrency(totalProfit)}" : _formatCurrency(totalProfit),
+                    style: TextStyle(color: _getValueColor(totalProfit), fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -212,8 +218,8 @@ class _SummaryTabState extends State<SummaryTab> {
                   Text("Statement Return", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
                   const SizedBox(height: 4),
                   Text(
-                    "${statementReturn.toStringAsFixed(2)}%",
-                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                    _formatPercent(statementReturn),
+                    style: TextStyle(color: _getValueColor(statementReturn), fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -225,9 +231,9 @@ class _SummaryTabState extends State<SummaryTab> {
   }
 
   Widget _buildBestPerformer(Map<String, dynamic> fund) {
-    final fundName = fund['scheme_name'] ?? 'Unknown Fund';
-    final returnPct = (fund['statement_annualized_return'] ?? 0.0).toDouble();
-    final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
+    final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
+    final returnPct = (fund['statement_annualized_return'] as num?)?.toDouble();
+    final profit = (fund['absolute_profit'] as num?)?.toDouble();
 
     return Card(
       elevation: 0,
@@ -266,7 +272,7 @@ class _SummaryTabState extends State<SummaryTab> {
                   children: [
                     const Text("Statement Return", style: TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 4),
-                    Text("+${returnPct.toStringAsFixed(2)}%", style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(_formatPercent(returnPct), style: TextStyle(color: _getValueColor(returnPct), fontSize: 16, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 Column(
@@ -274,7 +280,7 @@ class _SummaryTabState extends State<SummaryTab> {
                   children: [
                     const Text("Profit", style: TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 4),
-                    Text(profit > 0 ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 15, fontWeight: FontWeight.bold)),
+                    Text((profit != null && profit > 0) ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), style: TextStyle(color: _getValueColor(profit), fontSize: 15, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ],
@@ -286,14 +292,14 @@ class _SummaryTabState extends State<SummaryTab> {
   }
 
   Widget _buildFundCard(Map<String, dynamic> fund) {
-    final fundName = fund['scheme_name'] ?? 'Unknown Fund';
-    final openingVal = (fund['opening_value'] ?? 0.0).toDouble();
-    final freshInvestments = (fund['fund_investments'] ?? 0.0).toDouble();
-    final redemptions = (fund['fund_redemptions'] ?? 0.0).toDouble();
-    final netCapital = (fund['capital_deployed'] ?? 0.0).toDouble();
-    final currentVal = (fund['current_value'] ?? 0.0).toDouble();
-    final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
-    final annReturn = (fund['statement_annualized_return'] ?? 0.0).toDouble();
+    final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
+    final openingVal = (fund['opening_value'] as num?)?.toDouble();
+    final freshInvestments = (fund['fund_investments'] as num?)?.toDouble();
+    final redemptions = (fund['fund_redemptions'] as num?)?.toDouble();
+    final netCapital = (fund['capital_deployed'] as num?)?.toDouble();
+    final currentVal = (fund['current_value'] as num?)?.toDouble();
+    final profit = (fund['absolute_profit'] as num?)?.toDouble();
+    final annReturn = (fund['statement_annualized_return'] as num?)?.toDouble();
 
     return Card(
       elevation: 0,
@@ -322,16 +328,16 @@ class _SummaryTabState extends State<SummaryTab> {
               children: [
                 _buildMetric("Opening Value", _formatCurrency(openingVal), Colors.black87),
                 _buildMetric("Fresh Investment", _formatCurrency(freshInvestments), Colors.black87),
-                _buildMetric("Redemptions", _formatCurrency(redemptions), Colors.redAccent, crossAxisAlignment: CrossAxisAlignment.end),
+                _buildMetric("Redemptions", _formatCurrency(redemptions), Colors.black87, crossAxisAlignment: CrossAxisAlignment.end),
               ],
             ),
             const Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Divider()),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Net Capital", _formatCurrency(netCapital), Colors.black87),
-                _buildMetric("Profit", profit > 0 ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), const Color(0xFF00BFA5)),
-                _buildMetric("Statement Return", "${annReturn.toStringAsFixed(2)}%", const Color(0xFF00BFA5), crossAxisAlignment: CrossAxisAlignment.end),
+                _buildMetric("Capital Deployed", _formatCurrency(netCapital), Colors.black87),
+                _buildMetric("Profit", (profit != null && profit > 0) ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), _getValueColor(profit)),
+                _buildMetric("Statement Return", _formatPercent(annReturn), _getValueColor(annReturn), crossAxisAlignment: CrossAxisAlignment.end),
               ],
             ),
           ],
@@ -349,10 +355,5 @@ class _SummaryTabState extends State<SummaryTab> {
         Text(value, style: TextStyle(color: valueColor, fontSize: 13, fontWeight: FontWeight.bold)),
       ],
     );
-  }
-
-  // EN_IN LOCALIZED CURRENCY FORMAT
-  String _formatCurrency(double value) {
-    return NumberFormat.currency(locale: "en_IN", symbol: "₹").format(value);
   }
 }

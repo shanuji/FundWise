@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
-class HoldingsTab extends StatelessWidget {
+class HoldingsTab extends StatefulWidget {
   final Map<String, dynamic> portfolioSummary;
   final List<dynamic> fundsList;
 
@@ -11,39 +12,104 @@ class HoldingsTab extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<HoldingsTab> createState() => _HoldingsTabState();
+}
+
+class _HoldingsTabState extends State<HoldingsTab> {
+  String _sortOption = 'Current Value';
+
+  @override
   Widget build(BuildContext context) {
-    if (fundsList.isEmpty) return const Center(child: Text("No holdings data available."));
+    final validFunds = widget.fundsList.where((fund) {
+      final cVal = (fund['current_value'] ?? 0.0).toDouble();
+      final units = (fund['units'] ?? 0.0).toDouble();
+      final isRedeemed = fund['is_fully_redeemed'] == true;
+      return cVal >= 1.0 && units >= 0.001 && !isRedeemed;
+    }).toList();
 
-    // STRICT MAPPING: Exact key from portfolio_summary
-    final totalCurrentValue = (portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
+    if (validFunds.isEmpty) {
+      return const Center(child: Text("No active holdings found."));
+    }
 
-    final sortedFunds = List.from(fundsList)..sort((a, b) {
-      final valA = (a['current_value'] ?? 0.0).toDouble();
-      final valB = (b['current_value'] ?? 0.0).toDouble();
-      return valB.compareTo(valA);
+    final totalCurrentValue = (widget.portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
+
+    // DYNAMIC SORTING
+    final sortedFunds = List.from(validFunds)..sort((a, b) {
+      if (_sortOption == 'Alphabetical') {
+        final nameA = (a['scheme_name'] ?? '').toString();
+        final nameB = (b['scheme_name'] ?? '').toString();
+        return nameA.compareTo(nameB);
+      } else if (_sortOption == 'Profit') {
+        final valA = (a['absolute_profit'] ?? 0.0).toDouble();
+        final valB = (b['absolute_profit'] ?? 0.0).toDouble();
+        return valB.compareTo(valA);
+      } else if (_sortOption == 'Statement Return') {
+        final valA = (a['statement_annualized_return'] ?? 0.0).toDouble();
+        final valB = (b['statement_annualized_return'] ?? 0.0).toDouble();
+        return valB.compareTo(valA);
+      } else {
+        final valA = (a['current_value'] ?? 0.0).toDouble();
+        final valB = (b['current_value'] ?? 0.0).toDouble();
+        return valB.compareTo(valA);
+      }
     });
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: sortedFunds.length,
-      itemBuilder: (context, index) {
-        return _buildHoldingCard(sortedFunds[index], totalCurrentValue);
-      },
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Your Holdings",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              DropdownButton<String>(
+                value: _sortOption,
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.deepPurple),
+                style: TextStyle(fontSize: 12, color: Colors.deepPurple[400], fontWeight: FontWeight.bold),
+                underline: const SizedBox(),
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _sortOption = newValue;
+                    });
+                  }
+                },
+                items: <String>['Current Value', 'Profit', 'Statement Return', 'Alphabetical']
+                    .map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text("Sort by: $value"),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16.0),
+            itemCount: sortedFunds.length,
+            itemBuilder: (context, index) {
+              return _buildHoldingCard(sortedFunds[index], totalCurrentValue);
+            },
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildHoldingCard(Map<String, dynamic> fund, double totalPortfolioValue) {
-    // STRICT MAPPING: Exact keys from funds_breakdown only.
+    // STRICT MAP: Only mapping current holdings representation. No Net Capital.
     final fundName = fund['scheme_name'] ?? 'Unknown Fund';
-    final currentValue = (fund['current_value'] ?? 0.0).toDouble();
-    final invested = (fund['capital_deployed'] ?? 0.0).toDouble();
+    final currentVal = (fund['current_value'] ?? 0.0).toDouble();
     final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
-    
-    // Removing the wildcard guesses here as well
     final units = (fund['units'] ?? 0.0).toDouble();
     final nav = (fund['nav'] ?? 0.0).toDouble();
     
-    double allocationPct = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0.0;
+    double allocationPct = totalPortfolioValue > 0 ? (currentVal / totalPortfolioValue) * 100 : 0.0;
 
     return Card(
       elevation: 0,
@@ -74,9 +140,8 @@ class HoldingsTab extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Invested", "₹${_formatCurrency(invested)}"),
-                _buildMetric("Current Value", "₹${_formatCurrency(currentValue)}"),
-                _buildMetric("Profit", "₹${_formatCurrency(profit)}", color: const Color(0xFF00BFA5), align: CrossAxisAlignment.end),
+                _buildMetric("Current Value", _formatCurrency(currentVal)),
+                _buildMetric("Profit", profit > 0 ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), color: const Color(0xFF00BFA5), align: CrossAxisAlignment.end),
               ],
             ),
             const Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Divider()),
@@ -84,7 +149,7 @@ class HoldingsTab extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildMetric("Total Units", units.toStringAsFixed(3)),
-                _buildMetric("Latest NAV", "₹${_formatCurrency(nav)}", align: CrossAxisAlignment.end),
+                _buildMetric("Latest NAV", _formatCurrency(nav), align: CrossAxisAlignment.end),
               ],
             ),
           ],
@@ -104,7 +169,8 @@ class HoldingsTab extends StatelessWidget {
     );
   }
 
+  // EN_IN LOCALIZED CURRENCY FORMAT
   String _formatCurrency(double value) {
-    return value.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return NumberFormat.currency(locale: "en_IN", symbol: "₹").format(value);
   }
 }

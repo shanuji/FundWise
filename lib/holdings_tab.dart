@@ -14,11 +14,12 @@ class HoldingsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (fundsList.isEmpty) return const Center(child: Text("No holdings data available."));
 
-    final totalCurrentValue = (portfolioSummary['current_portfolio_value'] ?? portfolioSummary['current_value'] ?? 0.0).toDouble();
+    // STRICT MAPPING: Exact key from portfolio_summary
+    final totalCurrentValue = (portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
 
     final sortedFunds = List.from(fundsList)..sort((a, b) {
-      final valA = (a['current_value'] ?? a['value'] ?? 0.0).toDouble();
-      final valB = (b['current_value'] ?? b['value'] ?? 0.0).toDouble();
+      final valA = (a['current_value'] ?? 0.0).toDouble();
+      final valB = (b['current_value'] ?? 0.0).toDouble();
       return valB.compareTo(valA);
     });
 
@@ -32,12 +33,15 @@ class HoldingsTab extends StatelessWidget {
   }
 
   Widget _buildHoldingCard(Map<String, dynamic> fund, double totalPortfolioValue) {
-    final fundName = fund['fund_name'] ?? fund['scheme'] ?? fund['scheme_name'] ?? fund['name'] ?? 'Unknown Fund';
-    final currentValue = (fund['current_value'] ?? fund['value'] ?? 0.0).toDouble();
-    final invested = (fund['invested_value'] ?? fund['invested'] ?? fund['total_invested'] ?? 0.0).toDouble();
-    final profit = (fund['profit'] ?? fund['total_profit'] ?? fund['gain'] ?? 0.0).toDouble();
-    final units = (fund['units'] ?? fund['closing_balance'] ?? fund['balance'] ?? fund['total_units'] ?? 0.0).toDouble();
-    final nav = (fund['nav'] ?? fund['latest_nav'] ?? fund['current_nav'] ?? 0.0).toDouble();
+    // STRICT MAPPING: Exact keys from funds_breakdown only.
+    final fundName = fund['scheme_name'] ?? 'Unknown Fund';
+    final currentValue = (fund['current_value'] ?? 0.0).toDouble();
+    final invested = (fund['capital_deployed'] ?? 0.0).toDouble();
+    final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
+    
+    // Removing the wildcard guesses here as well
+    final units = (fund['units'] ?? 0.0).toDouble();
+    final nav = (fund['nav'] ?? 0.0).toDouble();
     
     double allocationPct = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0.0;
 

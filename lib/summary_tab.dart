@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
-class SummaryTab extends StatelessWidget {
+class SummaryTab extends StatefulWidget {
   final Map<String, dynamic> portfolioSummary;
   final List<dynamic> fundsList;
   final String statementPeriod;
@@ -13,34 +14,86 @@ class SummaryTab extends StatelessWidget {
   }) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    // STRICT MAPPING: Exact keys from portfolio_summary only. No fallbacks.
-    final currentValue = (portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
-    final totalProfit = (portfolioSummary['total_profit'] ?? 0.0).toDouble();
-    final totalInvested = (portfolioSummary['total_capital_deployed'] ?? 0.0).toDouble();
-    final statementReturn = (portfolioSummary['statement_annualized_return'] ?? 0.0).toDouble();
-    final benchmarkReturn = (portfolioSummary['benchmark_annualized_return'] ?? 0.0).toDouble();
+  State<SummaryTab> createState() => _SummaryTabState();
+}
 
-    final sortedFunds = List.from(fundsList)..sort((a, b) {
-      final valA = (a['current_value'] ?? 0.0).toDouble();
-      final valB = (b['current_value'] ?? 0.0).toDouble();
-      return valB.compareTo(valA);
+class _SummaryTabState extends State<SummaryTab> {
+  String _sortOption = 'Current Value';
+
+  @override
+  Widget build(BuildContext context) {
+    // STRICT MAP: Exact keys from portfolio_summary only.
+    final currentValue = (widget.portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
+    final totalProfit = (widget.portfolioSummary['total_profit'] ?? 0.0).toDouble();
+    final netCapitalDeployed = (widget.portfolioSummary['total_capital_deployed'] ?? 0.0).toDouble();
+    final statementReturn = (widget.portfolioSummary['statement_annualized_return'] ?? 0.0).toDouble();
+    
+    // BENCHMARK STRICT LOGIC
+    final benchmarkReturn = widget.portfolioSummary['benchmark_annualized_return'];
+    final benchmarkStatus = widget.portfolioSummary['benchmark_status']?.toString();
+    String benchmarkText = "Benchmark Unavailable";
+    if (benchmarkStatus == "Available" && benchmarkReturn != null) {
+      benchmarkText = "Nifty 50: ${(benchmarkReturn as num).toDouble().toStringAsFixed(2)}%";
+    }
+
+    final validFunds = widget.fundsList.where((fund) {
+      final cVal = (fund['current_value'] ?? 0.0).toDouble();
+      final units = (fund['units'] ?? 0.0).toDouble();
+      final isRedeemed = fund['is_fully_redeemed'] == true;
+      return cVal >= 1.0 && units >= 0.001 && !isRedeemed;
+    }).toList();
+
+    // DYNAMIC SORTING
+    final sortedFunds = List.from(validFunds)..sort((a, b) {
+      if (_sortOption == 'Alphabetical') {
+        final nameA = (a['scheme_name'] ?? '').toString();
+        final nameB = (b['scheme_name'] ?? '').toString();
+        return nameA.compareTo(nameB);
+      } else if (_sortOption == 'Profit') {
+        final valA = (a['absolute_profit'] ?? 0.0).toDouble();
+        final valB = (b['absolute_profit'] ?? 0.0).toDouble();
+        return valB.compareTo(valA);
+      } else if (_sortOption == 'Statement Return') {
+        final valA = (a['statement_annualized_return'] ?? 0.0).toDouble();
+        final valB = (b['statement_annualized_return'] ?? 0.0).toDouble();
+        return valB.compareTo(valA);
+      } else {
+        final valA = (a['current_value'] ?? 0.0).toDouble();
+        final valB = (b['current_value'] ?? 0.0).toDouble();
+        return valB.compareTo(valA);
+      }
     });
 
+    // BEST PERFORMER STRICT LOGIC (cVal >= 5000 & non-null return)
     Map<String, dynamic>? bestPerformer;
     if (sortedFunds.isNotEmpty) {
-      bestPerformer = sortedFunds.reduce((curr, next) {
-        // STRICT MAPPING: Comparing strictly by statement_annualized_return
-        final currReturn = (curr['statement_annualized_return'] ?? 0.0).toDouble();
-        final nextReturn = (next['statement_annualized_return'] ?? 0.0).toDouble();
-        return currReturn > nextReturn ? curr : next;
-      });
+      final candidates = sortedFunds.where((fund) {
+        final cVal = (fund['current_value'] ?? 0.0).toDouble();
+        final ret = fund['statement_annualized_return'];
+        return cVal >= 5000.0 && ret != null;
+      }).toList();
+
+      if (candidates.isNotEmpty) {
+        bestPerformer = candidates.reduce((curr, next) {
+          final currReturn = (curr['statement_annualized_return'] ?? -999.0).toDouble();
+          final nextReturn = (next['statement_annualized_return'] ?? -999.0).toDouble();
+          return currReturn > nextReturn ? curr : next;
+        });
+      }
     }
 
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        _buildPortfolioSnapshot(currentValue, totalProfit, totalInvested, statementReturn, benchmarkReturn),
+        _buildPortfolioSnapshot(currentValue, totalProfit, netCapitalDeployed, statementReturn, benchmarkText),
+        const SizedBox(height: 8),
+        // RENDER STATEMENT PERIOD
+        Center(
+          child: Text(
+            "Statement Period: ${widget.statementPeriod}",
+            style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+        ),
         const SizedBox(height: 16),
         if (bestPerformer != null) _buildBestPerformer(bestPerformer),
         const SizedBox(height: 24),
@@ -51,9 +104,26 @@ class SummaryTab extends StatelessWidget {
               "Funds Breakdown",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
             ),
-            Text(
-              "Sort by: Current Value ▾",
-              style: TextStyle(fontSize: 12, color: Colors.deepPurple[400]),
+            // SORT DROPDOWN
+            DropdownButton<String>(
+              value: _sortOption,
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.deepPurple),
+              style: TextStyle(fontSize: 12, color: Colors.deepPurple[400], fontWeight: FontWeight.bold),
+              underline: const SizedBox(),
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _sortOption = newValue;
+                  });
+                }
+              },
+              items: <String>['Current Value', 'Profit', 'Statement Return', 'Alphabetical']
+                  .map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text("Sort by: $value"),
+                );
+              }).toList(),
             ),
           ],
         ),
@@ -63,7 +133,7 @@ class SummaryTab extends StatelessWidget {
     );
   }
 
-  Widget _buildPortfolioSnapshot(double currentValue, double totalProfit, double totalInvested, double statementReturn, double benchmarkReturn) {
+  Widget _buildPortfolioSnapshot(double currentValue, double totalProfit, double netCapitalDeployed, double statementReturn, String benchmarkText) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -88,7 +158,7 @@ class SummaryTab extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text("Portfolio Snapshot", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13)),
-              Text("Nifty 50: ${benchmarkReturn.toStringAsFixed(2)}%", style: TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+              Text(benchmarkText, style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 16),
@@ -101,7 +171,7 @@ class SummaryTab extends StatelessWidget {
                   Text("Current Value", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(
-                    "₹${_formatCurrency(currentValue)}",
+                    _formatCurrency(currentValue),
                     style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -112,7 +182,7 @@ class SummaryTab extends StatelessWidget {
                   Text("Total Profit", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(
-                    "+₹${_formatCurrency(totalProfit)}",
+                    totalProfit > 0 ? "+${_formatCurrency(totalProfit)}" : _formatCurrency(totalProfit),
                     style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -128,22 +198,22 @@ class SummaryTab extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Total Invested", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                  Text("Net Capital During Statement", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
                   const SizedBox(height: 4),
                   Text(
-                    "₹${_formatCurrency(totalInvested)}",
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                    _formatCurrency(netCapitalDeployed),
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text("Statement Return", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                  Text("Statement Return", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
                   const SizedBox(height: 4),
                   Text(
                     "${statementReturn.toStringAsFixed(2)}%",
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -155,7 +225,6 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildBestPerformer(Map<String, dynamic> fund) {
-    // STRICT MAPPING: Exact keys from funds_breakdown only.
     final fundName = fund['scheme_name'] ?? 'Unknown Fund';
     final returnPct = (fund['statement_annualized_return'] ?? 0.0).toDouble();
     final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
@@ -195,7 +264,7 @@ class SummaryTab extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Return", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const Text("Statement Return", style: TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 4),
                     Text("+${returnPct.toStringAsFixed(2)}%", style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 16, fontWeight: FontWeight.bold)),
                   ],
@@ -205,7 +274,7 @@ class SummaryTab extends StatelessWidget {
                   children: [
                     const Text("Profit", style: TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 4),
-                    Text("₹${_formatCurrency(profit)}", style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 15, fontWeight: FontWeight.bold)),
+                    Text(profit > 0 ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), style: const TextStyle(color: Color(0xFF00BFA5), fontSize: 15, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ],
@@ -217,12 +286,14 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildFundCard(Map<String, dynamic> fund) {
-    // STRICT MAPPING: Exact keys from funds_breakdown only.
     final fundName = fund['scheme_name'] ?? 'Unknown Fund';
-    final currentValue = (fund['current_value'] ?? 0.0).toDouble();
-    final invested = (fund['capital_deployed'] ?? 0.0).toDouble();
+    final openingVal = (fund['opening_value'] ?? 0.0).toDouble();
+    final freshInvestments = (fund['fund_investments'] ?? 0.0).toDouble();
+    final redemptions = (fund['fund_redemptions'] ?? 0.0).toDouble();
+    final netCapital = (fund['capital_deployed'] ?? 0.0).toDouble();
+    final currentVal = (fund['current_value'] ?? 0.0).toDouble();
     final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
-    final returnPct = (fund['statement_annualized_return'] ?? 0.0).toDouble();
+    final annReturn = (fund['statement_annualized_return'] ?? 0.0).toDouble();
 
     return Card(
       elevation: 0,
@@ -242,16 +313,25 @@ class SummaryTab extends StatelessWidget {
                   child: Text(fundName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
                 ),
                 const SizedBox(width: 8),
-                Text("₹${_formatCurrency(currentValue)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                Text(_formatCurrency(currentVal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               ],
             ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Invested", "₹${_formatCurrency(invested)}", Colors.black87),
-                _buildMetric("Profit", "₹${_formatCurrency(profit)}", const Color(0xFF00BFA5)),
-                _buildMetric("Return", "${returnPct.toStringAsFixed(2)}%", const Color(0xFF00BFA5), crossAxisAlignment: CrossAxisAlignment.end),
+                _buildMetric("Opening Value", _formatCurrency(openingVal), Colors.black87),
+                _buildMetric("Fresh Investment", _formatCurrency(freshInvestments), Colors.black87),
+                _buildMetric("Redemptions", _formatCurrency(redemptions), Colors.redAccent, crossAxisAlignment: CrossAxisAlignment.end),
+              ],
+            ),
+            const Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Divider()),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildMetric("Net Capital", _formatCurrency(netCapital), Colors.black87),
+                _buildMetric("Profit", profit > 0 ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), const Color(0xFF00BFA5)),
+                _buildMetric("Statement Return", "${annReturn.toStringAsFixed(2)}%", const Color(0xFF00BFA5), crossAxisAlignment: CrossAxisAlignment.end),
               ],
             ),
           ],
@@ -264,14 +344,15 @@ class SummaryTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: crossAxisAlignment,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
         const SizedBox(height: 4),
         Text(value, style: TextStyle(color: valueColor, fontSize: 13, fontWeight: FontWeight.bold)),
       ],
     );
   }
 
+  // EN_IN LOCALIZED CURRENCY FORMAT
   String _formatCurrency(double value) {
-    return value.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return NumberFormat.currency(locale: "en_IN", symbol: "₹").format(value);
   }
 }

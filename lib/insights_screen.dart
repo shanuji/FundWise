@@ -15,14 +15,13 @@ class InsightsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Safely extract the required dictionaries and lists to pass down to the tabs
     final portfolioSummary = parsedData['portfolio_summary'] ?? {};
-    final fundsList = parsedData['funds'] ?? parsedData['funds_breakdown'] ?? [];
+    final fundsList = parsedData['funds_breakdown'] ?? parsedData['funds'] ?? [];
     
-    // Extract statement period for the Summary tab
-    final statementPeriodInfo = portfolioSummary['statement_period'] ?? {};
-    final fromDate = statementPeriodInfo['from']?.toString() ?? 'Unknown Date';
-    final toDate = statementPeriodInfo['to']?.toString() ?? 'Unknown Date';
+    // FIX: Read statement_period directly from the root parsedData object, not portfolio_summary
+    final statementPeriodInfo = parsedData['statement_period'] ?? {};
+    final fromDate = statementPeriodInfo['from']?.toString() ?? 'N/A';
+    final toDate = statementPeriodInfo['to']?.toString() ?? 'N/A';
     final statementPeriod = "$fromDate to $toDate";
 
     return DefaultTabController(
@@ -37,14 +36,6 @@ class InsightsScreen extends StatelessWidget {
           backgroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.grey),
-              onPressed: () {
-                // Info tooltip placeholder
-              },
-            ),
-          ],
           bottom: TabBar(
             labelColor: Theme.of(context).primaryColor,
             unselectedLabelColor: Colors.grey,

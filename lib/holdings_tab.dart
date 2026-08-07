@@ -18,38 +18,50 @@ class HoldingsTab extends StatefulWidget {
 class _HoldingsTabState extends State<HoldingsTab> {
   String _sortOption = 'Current Value';
 
+  Color _getValueColor(double? value) {
+    if (value == null || value == 0.0) return Colors.grey;
+    return value > 0.0 ? const Color(0xFF00BFA5) : Colors.redAccent;
+  }
+
+  String _formatCurrency(double? value) {
+    if (value == null) return "N/A";
+    return NumberFormat.currency(locale: "en_IN", symbol: "₹").format(value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final validFunds = widget.fundsList.where((fund) {
-      final cVal = (fund['current_value'] ?? 0.0).toDouble();
-      final units = (fund['units'] ?? 0.0).toDouble();
-      final isRedeemed = fund['is_fully_redeemed'] == true;
-      return cVal >= 1.0 && units >= 0.001 && !isRedeemed;
+      final cVal = (fund['current_value'] as num?)?.toDouble();
+      if (cVal == null || cVal < 1.0) return false;
+      
+      final unitsNum = fund['units'] as num?;
+      if (unitsNum != null && unitsNum.toDouble() < 0.001) return false;
+
+      return true;
     }).toList();
 
     if (validFunds.isEmpty) {
       return const Center(child: Text("No active holdings found."));
     }
 
-    final totalCurrentValue = (widget.portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
+    final totalCurrentValue = (widget.portfolioSummary['current_portfolio_value'] as num?)?.toDouble();
 
-    // DYNAMIC SORTING
     final sortedFunds = List.from(validFunds)..sort((a, b) {
       if (_sortOption == 'Alphabetical') {
         final nameA = (a['scheme_name'] ?? '').toString();
         final nameB = (b['scheme_name'] ?? '').toString();
         return nameA.compareTo(nameB);
       } else if (_sortOption == 'Profit') {
-        final valA = (a['absolute_profit'] ?? 0.0).toDouble();
-        final valB = (b['absolute_profit'] ?? 0.0).toDouble();
+        final valA = (a['absolute_profit'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['absolute_profit'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else if (_sortOption == 'Statement Return') {
-        final valA = (a['statement_annualized_return'] ?? 0.0).toDouble();
-        final valB = (b['statement_annualized_return'] ?? 0.0).toDouble();
+        final valA = (a['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else {
-        final valA = (a['current_value'] ?? 0.0).toDouble();
-        final valB = (b['current_value'] ?? 0.0).toDouble();
+        final valA = (a['current_value'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['current_value'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       }
     });
@@ -101,15 +113,17 @@ class _HoldingsTabState extends State<HoldingsTab> {
     );
   }
 
-  Widget _buildHoldingCard(Map<String, dynamic> fund, double totalPortfolioValue) {
-    // STRICT MAP: Only mapping current holdings representation. No Net Capital.
-    final fundName = fund['scheme_name'] ?? 'Unknown Fund';
-    final currentVal = (fund['current_value'] ?? 0.0).toDouble();
-    final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
-    final units = (fund['units'] ?? 0.0).toDouble();
-    final nav = (fund['nav'] ?? 0.0).toDouble();
+  Widget _buildHoldingCard(Map<String, dynamic> fund, double? totalPortfolioValue) {
+    final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
+    final currentVal = (fund['current_value'] as num?)?.toDouble();
+    final profit = (fund['absolute_profit'] as num?)?.toDouble();
+    final units = (fund['units'] as num?)?.toDouble();
+    final nav = (fund['nav'] as num?)?.toDouble();
     
-    double allocationPct = totalPortfolioValue > 0 ? (currentVal / totalPortfolioValue) * 100 : 0.0;
+    double allocationPct = 0.0;
+    if (totalPortfolioValue != null && totalPortfolioValue > 0 && currentVal != null) {
+      allocationPct = (currentVal / totalPortfolioValue) * 100;
+    }
 
     return Card(
       elevation: 0,
@@ -141,14 +155,14 @@ class _HoldingsTabState extends State<HoldingsTab> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildMetric("Current Value", _formatCurrency(currentVal)),
-                _buildMetric("Profit", profit > 0 ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), color: const Color(0xFF00BFA5), align: CrossAxisAlignment.end),
+                _buildMetric("Profit", (profit != null && profit > 0) ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), color: _getValueColor(profit), align: CrossAxisAlignment.end),
               ],
             ),
             const Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Divider()),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Total Units", units.toStringAsFixed(3)),
+                _buildMetric("Total Units", units != null ? units.toStringAsFixed(3) : "N/A"),
                 _buildMetric("Latest NAV", _formatCurrency(nav), align: CrossAxisAlignment.end),
               ],
             ),
@@ -167,10 +181,5 @@ class _HoldingsTabState extends State<HoldingsTab> {
         Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
       ],
     );
-  }
-
-  // EN_IN LOCALIZED CURRENCY FORMAT
-  String _formatCurrency(double value) {
-    return NumberFormat.currency(locale: "en_IN", symbol: "₹").format(value);
   }
 }

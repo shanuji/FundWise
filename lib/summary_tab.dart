@@ -14,26 +14,25 @@ class SummaryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // REMOVED ALL HARDCODED DUMMY DATA. Default is strictly 0.0.
-    final currentValue = (portfolioSummary['current_portfolio_value'] ?? portfolioSummary['current_value'] ?? 0.0).toDouble();
-    final totalProfit = (portfolioSummary['total_profit'] ?? portfolioSummary['profit'] ?? portfolioSummary['total_gains'] ?? 0.0).toDouble();
-    final totalInvested = (portfolioSummary['total_capital_deployed'] ?? portfolioSummary['total_invested'] ?? portfolioSummary['invested_amount'] ?? 0.0).toDouble();
-    final statementReturn = (portfolioSummary['statement_annualized_return'] ?? portfolioSummary['xirr'] ?? portfolioSummary['annualized_return'] ?? 0.0).toDouble();
-    
-    // RESTORED NIFTY BENCHMARK
-    final benchmarkReturn = (portfolioSummary['benchmark_annualized_return'] ?? portfolioSummary['benchmark_return'] ?? 0.0).toDouble();
+    // STRICT MAPPING: Exact keys from portfolio_summary only. No fallbacks.
+    final currentValue = (portfolioSummary['current_portfolio_value'] ?? 0.0).toDouble();
+    final totalProfit = (portfolioSummary['total_profit'] ?? 0.0).toDouble();
+    final totalInvested = (portfolioSummary['total_capital_deployed'] ?? 0.0).toDouble();
+    final statementReturn = (portfolioSummary['statement_annualized_return'] ?? 0.0).toDouble();
+    final benchmarkReturn = (portfolioSummary['benchmark_annualized_return'] ?? 0.0).toDouble();
 
     final sortedFunds = List.from(fundsList)..sort((a, b) {
-      final valA = (a['current_value'] ?? a['value'] ?? 0.0).toDouble();
-      final valB = (b['current_value'] ?? b['value'] ?? 0.0).toDouble();
+      final valA = (a['current_value'] ?? 0.0).toDouble();
+      final valB = (b['current_value'] ?? 0.0).toDouble();
       return valB.compareTo(valA);
     });
 
     Map<String, dynamic>? bestPerformer;
     if (sortedFunds.isNotEmpty) {
       bestPerformer = sortedFunds.reduce((curr, next) {
-        final currReturn = (curr['xirr'] ?? curr['annualized_return'] ?? curr['absolute_return'] ?? curr['cagr'] ?? 0.0).toDouble();
-        final nextReturn = (next['xirr'] ?? next['annualized_return'] ?? next['absolute_return'] ?? next['cagr'] ?? 0.0).toDouble();
+        // STRICT MAPPING: Comparing strictly by statement_annualized_return
+        final currReturn = (curr['statement_annualized_return'] ?? 0.0).toDouble();
+        final nextReturn = (next['statement_annualized_return'] ?? 0.0).toDouble();
         return currReturn > nextReturn ? curr : next;
       });
     }
@@ -156,9 +155,10 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildBestPerformer(Map<String, dynamic> fund) {
-    final fundName = fund['fund_name'] ?? fund['scheme'] ?? fund['scheme_name'] ?? fund['name'] ?? 'Unknown Fund';
-    final returnPct = (fund['xirr'] ?? fund['annualized_return'] ?? fund['absolute_return'] ?? fund['cagr'] ?? 0.0).toDouble();
-    final profit = (fund['profit'] ?? fund['total_profit'] ?? fund['gain'] ?? fund['unrealized_profit'] ?? 0.0).toDouble();
+    // STRICT MAPPING: Exact keys from funds_breakdown only.
+    final fundName = fund['scheme_name'] ?? 'Unknown Fund';
+    final returnPct = (fund['statement_annualized_return'] ?? 0.0).toDouble();
+    final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
 
     return Card(
       elevation: 0,
@@ -217,11 +217,12 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildFundCard(Map<String, dynamic> fund) {
-    final fundName = fund['fund_name'] ?? fund['scheme'] ?? fund['scheme_name'] ?? fund['name'] ?? 'Unknown Fund';
-    final currentValue = (fund['current_value'] ?? fund['value'] ?? 0.0).toDouble();
-    final invested = (fund['invested_value'] ?? fund['invested'] ?? fund['total_invested'] ?? fund['cost_value'] ?? fund['amount'] ?? 0.0).toDouble();
-    final profit = (fund['profit'] ?? fund['total_profit'] ?? fund['gain'] ?? fund['unrealized_profit'] ?? 0.0).toDouble();
-    final returnPct = (fund['xirr'] ?? fund['annualized_return'] ?? fund['absolute_return'] ?? fund['cagr'] ?? fund['return'] ?? 0.0).toDouble();
+    // STRICT MAPPING: Exact keys from funds_breakdown only.
+    final fundName = fund['scheme_name'] ?? 'Unknown Fund';
+    final currentValue = (fund['current_value'] ?? 0.0).toDouble();
+    final invested = (fund['capital_deployed'] ?? 0.0).toDouble();
+    final profit = (fund['absolute_profit'] ?? 0.0).toDouble();
+    final returnPct = (fund['statement_annualized_return'] ?? 0.0).toDouble();
 
     return Card(
       elevation: 0,

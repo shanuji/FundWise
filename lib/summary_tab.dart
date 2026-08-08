@@ -43,6 +43,7 @@ class _SummaryTabState extends State<SummaryTab> {
     final netCapitalDeployed = (widget.portfolioSummary['total_statement_investments'] as num?)?.toDouble();
     final statementReturn = (widget.portfolioSummary['statement_return_pct'] as num?)?.toDouble();
     final benchmarkReturn = (widget.portfolioSummary['nifty_statement_return_pct'] as num?)?.toDouble();
+    final portfolioStatus = widget.portfolioSummary['portfolio_return_status']?.toString() ?? '';
     
     String benchmarkText = "Benchmark Unavailable";
     if (benchmarkReturn != null) {
@@ -89,7 +90,7 @@ class _SummaryTabState extends State<SummaryTab> {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        _buildPortfolioSnapshot(currentValue, totalProfit, netCapitalDeployed, statementReturn, benchmarkText),
+        _buildPortfolioSnapshot(currentValue, totalProfit, netCapitalDeployed, statementReturn, benchmarkText, portfolioStatus),
         const SizedBox(height: 8),
         Center(
           child: Text(
@@ -135,7 +136,7 @@ class _SummaryTabState extends State<SummaryTab> {
     );
   }
 
-  Widget _buildPortfolioSnapshot(double? currentValue, double? totalProfit, double? netCapitalDeployed, double? statementReturn, String benchmarkText) {
+  Widget _buildPortfolioSnapshot(double? currentValue, double? totalProfit, double? netCapitalDeployed, double? statementReturn, String benchmarkText, String portfolioStatus) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -163,6 +164,10 @@ class _SummaryTabState extends State<SummaryTab> {
               Text(benchmarkText, style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
             ],
           ),
+          if (portfolioStatus.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text("Status: $portfolioStatus", style: TextStyle(color: Colors.white70, fontSize: 11, fontStyle: FontStyle.italic)),
+          ],
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -295,6 +300,7 @@ class _SummaryTabState extends State<SummaryTab> {
     final currentVal = (fund['ending_market_value'] as num?)?.toDouble(); 
     final profit = (fund['net_wealth_gain'] as num?)?.toDouble(); 
     final statementReturn = (fund['statement_return_pct'] as num?)?.toDouble();
+    final stampDuty = (fund['stamp_duty_costs'] as num?)?.toDouble() ?? 0.0;
 
     final netCapital = freshInvestments; 
 
@@ -328,6 +334,10 @@ class _SummaryTabState extends State<SummaryTab> {
                 _buildMetric("Redemptions", _formatCurrency(redemptions), Colors.black87, crossAxisAlignment: CrossAxisAlignment.end),
               ],
             ),
+            if (stampDuty > 0) ...[
+              const SizedBox(height: 8),
+              Text("Stamp Duty Cost: ${_formatCurrency(stampDuty)}", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+            ],
             const Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Divider()),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -41,20 +41,15 @@ class _SummaryTabState extends State<SummaryTab> {
     final currentValue = (widget.portfolioSummary['ending_portfolio_value'] as num?)?.toDouble();
     final totalProfit = (widget.portfolioSummary['net_wealth_gain'] as num?)?.toDouble();
     final netCapitalDeployed = (widget.portfolioSummary['total_statement_investments'] as num?)?.toDouble();
-    // FIXED: Reading statement_return_pct instead of statement_annualized_return
     final statementReturn = (widget.portfolioSummary['statement_return_pct'] as num?)?.toDouble();
-    final benchmarkReturn = (widget.portfolioSummary['nifty_annualized_return'] as num?)?.toDouble();
+    final benchmarkReturn = (widget.portfolioSummary['nifty_statement_return_pct'] as num?)?.toDouble();
     
     String benchmarkText = "Benchmark Unavailable";
     if (benchmarkReturn != null) {
       benchmarkText = "Nifty 50: ${_formatPercent(benchmarkReturn)}";
     }
 
-    final validFunds = widget.fundsList.where((fund) {
-      final cVal = (fund['ending_market_value'] as num?)?.toDouble();
-      if (cVal == null || cVal < 1.0) return false;
-      return true;
-    }).toList();
+    final validFunds = widget.fundsList.toList();
 
     final sortedFunds = List.from(validFunds)..sort((a, b) {
       if (_sortOption == 'Alphabetical') {
@@ -66,7 +61,6 @@ class _SummaryTabState extends State<SummaryTab> {
         final valB = (b['net_wealth_gain'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else if (_sortOption == 'Statement Return') {
-        // FIXED: Sorting using statement_return_pct
         final valA = (a['statement_return_pct'] as num?)?.toDouble() ?? -999999999.0;
         final valB = (b['statement_return_pct'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
@@ -79,7 +73,6 @@ class _SummaryTabState extends State<SummaryTab> {
 
     Map<String, dynamic>? bestPerformer;
     if (sortedFunds.isNotEmpty) {
-      // FIXED: Finding best performer using statement_return_pct
       final candidates = sortedFunds.where((fund) {
         return fund['statement_return_pct'] != null;
       }).toList();
@@ -235,7 +228,6 @@ class _SummaryTabState extends State<SummaryTab> {
 
   Widget _buildBestPerformer(Map<String, dynamic> fund) {
     final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
-    // FIXED: Reading statement_return_pct for Best Performer UI
     final returnPct = (fund['statement_return_pct'] as num?)?.toDouble();
     final profit = (fund['net_wealth_gain'] as num?)?.toDouble(); 
 
@@ -302,7 +294,6 @@ class _SummaryTabState extends State<SummaryTab> {
     final redemptions = (fund['statement_redemptions'] as num?)?.toDouble(); 
     final currentVal = (fund['ending_market_value'] as num?)?.toDouble(); 
     final profit = (fund['net_wealth_gain'] as num?)?.toDouble(); 
-    // FIXED: Mapping to statement_return_pct for the Statement Return metric
     final statementReturn = (fund['statement_return_pct'] as num?)?.toDouble();
 
     final netCapital = freshInvestments; 
@@ -343,7 +334,6 @@ class _SummaryTabState extends State<SummaryTab> {
               children: [
                 _buildMetric("Capital Deployed", _formatCurrency(netCapital), Colors.black87),
                 _buildMetric("Profit", (profit != null && profit > 0) ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), _getValueColor(profit)),
-                // FIXED: Used statementReturn here
                 _buildMetric("Statement Return", _formatPercent(statementReturn), _getValueColor(statementReturn), crossAxisAlignment: CrossAxisAlignment.end),
               ],
             ),

@@ -31,7 +31,6 @@ class _HoldingsTabState extends State<HoldingsTab> {
   @override
   Widget build(BuildContext context) {
     final validFunds = widget.fundsList.where((fund) {
-      // UPDATED KEY: ending_market_value
       final cVal = (fund['ending_market_value'] as num?)?.toDouble();
       if (cVal == null || cVal < 1.0) return false;
       
@@ -45,7 +44,6 @@ class _HoldingsTabState extends State<HoldingsTab> {
       return const Center(child: Text("No active holdings found."));
     }
 
-    // UPDATED KEY: ending_portfolio_value
     final totalCurrentValue = (widget.portfolioSummary['ending_portfolio_value'] as num?)?.toDouble();
 
     final sortedFunds = List.from(validFunds)..sort((a, b) {
@@ -54,16 +52,15 @@ class _HoldingsTabState extends State<HoldingsTab> {
         final nameB = (b['scheme_name'] ?? '').toString();
         return nameA.compareTo(nameB);
       } else if (_sortOption == 'Profit') {
-        // UPDATED KEY: net_wealth_gain
         final valA = (a['net_wealth_gain'] as num?)?.toDouble() ?? -999999999.0;
         final valB = (b['net_wealth_gain'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else if (_sortOption == 'Statement Return') {
-        final valA = (a['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
-        final valB = (b['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
+        // FIXED: Sorting using statement_return_pct
+        final valA = (a['statement_return_pct'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['statement_return_pct'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else {
-        // UPDATED KEY: ending_market_value
         final valA = (a['ending_market_value'] as num?)?.toDouble() ?? -999999999.0;
         final valB = (b['ending_market_value'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
@@ -119,7 +116,6 @@ class _HoldingsTabState extends State<HoldingsTab> {
 
   Widget _buildHoldingCard(Map<String, dynamic> fund, double? totalPortfolioValue) {
     final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
-    // UPDATED KEYS
     final currentVal = (fund['ending_market_value'] as num?)?.toDouble();
     final profit = (fund['net_wealth_gain'] as num?)?.toDouble();
     final units = (fund['units'] as num?)?.toDouble();

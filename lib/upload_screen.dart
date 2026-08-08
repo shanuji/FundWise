@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class UploadScreen extends StatefulWidget {
-  final Function(Map<String, dynamic> data)? onUploadSuccess;
+  final ValueChanged<Map<String, dynamic>>? onUploadSuccess;
 
   const UploadScreen({super.key, this.onUploadSuccess});
 
@@ -18,7 +18,7 @@ class _UploadScreenState extends State<UploadScreen> {
   void _simulateUpload() {
     setState(() {
       _isLoading = true;
-      _errorMessage = ''; // Clear previous errors
+      _errorMessage = ''; 
     });
 
     // Simulate parsing or file picker action
@@ -27,7 +27,7 @@ class _UploadScreenState extends State<UploadScreen> {
         _isLoading = false;
         _selectedFileName = "CAS_Statement.pdf";
         // If an error occurred, set it here:
-        // _errorMessage = "Failed to parse statement password protected.";
+        // _errorMessage = "Failed to parse statement.";
       });
     });
   }
@@ -94,7 +94,6 @@ class _UploadScreenState extends State<UploadScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            // Error message container shown ONLY when there is a real non-empty error message
             if (_errorMessage.trim().isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(16),

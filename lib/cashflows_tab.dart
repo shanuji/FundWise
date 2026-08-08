@@ -14,7 +14,6 @@ class CashflowsTab extends StatelessWidget {
       return _buildEmptyState();
     }
 
-    // Sort transactions by date descending (newest first) if possible
     final sortedTx = List.from(transactions)..sort((a, b) {
       final dateA = a['date']?.toString() ?? '';
       final dateB = b['date']?.toString() ?? '';
@@ -54,34 +53,56 @@ class CashflowsTab extends StatelessWidget {
   Widget _buildTransactionCard(Map<String, dynamic> tx) {
     final date = tx['date']?.toString() ?? 'Unknown Date';
     final fundName = tx['scheme_name']?.toString() ?? tx['fund_name']?.toString() ?? tx['scheme']?.toString() ?? 'Unknown Fund';
-    final type = tx['normalized_type']?.toString() ?? tx['type']?.toString() ?? tx['description']?.toString() ?? 'Transaction';
+    final normalizedType = tx['normalized_type']?.toString() ?? tx['type']?.toString() ?? tx['description']?.toString() ?? 'Transaction';
     
     final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
     final units = (tx['units'] as num?)?.toDouble() ?? 0.0;
     final nav = (tx['nav'] as num?)?.toDouble() ?? (tx['price'] as num?)?.toDouble() ?? 0.0;
 
-    final typeUpper = type.toUpperCase();
-    final isInvestment = typeUpper.contains('PURCHASE') || typeUpper.contains('SIP') || typeUpper.contains('SWITCH_IN');
-    final isDividendReinvestment = typeUpper.contains('DIVIDEND_REINVESTMENT') || typeUpper.contains('REINVESTMENT');
-    final isStampDuty = typeUpper.contains('STAMP_DUTY');
+    final typeUpper = normalizedType.toUpperCase();
     final displayAmount = amount.abs();
     
     Color typeColor = const Color(0xFF00BFA5);
     IconData typeIcon = Icons.call_made;
-    String badgeLabel = "INVESTMENT";
+    String badgeLabel = typeUpper;
 
-    if (isDividendReinvestment) {
-      typeColor = Colors.blue;
-      typeIcon = Icons.autorenew;
-      badgeLabel = "DRIP";
-    } else if (isStampDuty) {
-      typeColor = Colors.orange;
-      typeIcon = Icons.receipt;
-      badgeLabel = "STAMP DUTY";
-    } else if (!isInvestment) {
+    if (typeUpper == 'PURCHASE' || typeUpper == 'SIP') {
+      badgeLabel = typeUpper == 'SIP' ? 'SIP' : 'INVESTMENT';
+      typeColor = const Color(0xFF00BFA5);
+      typeIcon = Icons.call_made;
+    } else if (typeUpper == 'SWITCH_IN') {
+      badgeLabel = 'SWITCH IN';
+      typeColor = const Color(0xFF00BFA5);
+      typeIcon = Icons.login;
+    } else if (typeUpper == 'REDEMPTION') {
+      badgeLabel = 'REDEMPTION';
       typeColor = Colors.redAccent;
       typeIcon = Icons.call_received;
-      badgeLabel = "REDEMPTION";
+    } else if (typeUpper == 'SWP') {
+      badgeLabel = 'SWP';
+      typeColor = Colors.redAccent;
+      typeIcon = Icons.call_received;
+    } else if (typeUpper == 'SWITCH_OUT') {
+      badgeLabel = 'SWITCH OUT';
+      typeColor = Colors.redAccent;
+      typeIcon = Icons.logout;
+    } else if (typeUpper == 'DIVIDEND_REINVESTMENT') {
+      badgeLabel = 'DRIP';
+      typeColor = Colors.blue;
+      typeIcon = Icons.autorenew;
+    } else if (typeUpper == 'DIVIDEND_PAYOUT') {
+      badgeLabel = 'DIVIDEND';
+      typeColor = Colors.purple;
+      typeIcon = Icons.card_giftcard;
+    } else if (typeUpper == 'STAMP_DUTY') {
+      badgeLabel = 'STAMP DUTY';
+      typeColor = Colors.orange;
+      typeIcon = Icons.receipt;
+    } else {
+      // Explicit fallback for unknown types: display exact normalized type rather than guessing redemption
+      badgeLabel = typeUpper;
+      typeColor = Colors.grey[700]!;
+      typeIcon = Icons.info_outline;
     }
 
     return Card(
@@ -132,7 +153,7 @@ class CashflowsTab extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              type,
+              normalizedType,
               style: TextStyle(color: Colors.grey[500], fontSize: 12),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

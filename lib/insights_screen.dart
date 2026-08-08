@@ -29,7 +29,8 @@ class InsightsScreen extends StatelessWidget {
     final portfolioSummary = parsedData['portfolio_summary'] ?? {};
     final fundsList = parsedData['funds_breakdown'] ?? [];
     
-    final statementPeriodInfo = parsedData['statement_period'] ?? {};
+    // FIXED: statement_period must be extracted from portfolioSummary, not parsedData root
+    final statementPeriodInfo = portfolioSummary['statement_period'] ?? {};
     final fromDate = _formatDate(statementPeriodInfo['from']?.toString() ?? 'N/A');
     final toDate = _formatDate(statementPeriodInfo['to']?.toString() ?? 'N/A');
     final statementPeriod = "$fromDate – $toDate";

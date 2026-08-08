@@ -40,7 +40,7 @@ class _SummaryTabState extends State<SummaryTab> {
   Widget build(BuildContext context) {
     final currentValue = (widget.portfolioSummary['ending_portfolio_value'] as num?)?.toDouble();
     final totalProfit = (widget.portfolioSummary['net_wealth_gain'] as num?)?.toDouble();
-    final netCapitalDeployed = (widget.portfolioSummary['total_statement_investments'] as num?)?.toDouble();
+    final freshInvestments = (widget.portfolioSummary['total_statement_investments'] as num?)?.toDouble();
     final statementReturn = (widget.portfolioSummary['statement_return_pct'] as num?)?.toDouble();
     final benchmarkReturn = (widget.portfolioSummary['nifty_statement_return_pct'] as num?)?.toDouble();
     final portfolioStatus = widget.portfolioSummary['portfolio_return_status']?.toString() ?? '';
@@ -90,7 +90,7 @@ class _SummaryTabState extends State<SummaryTab> {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        _buildPortfolioSnapshot(currentValue, totalProfit, netCapitalDeployed, statementReturn, benchmarkText, portfolioStatus),
+        _buildPortfolioSnapshot(currentValue, totalProfit, freshInvestments, statementReturn, benchmarkText, portfolioStatus),
         const SizedBox(height: 8),
         Center(
           child: Text(
@@ -136,7 +136,7 @@ class _SummaryTabState extends State<SummaryTab> {
     );
   }
 
-  Widget _buildPortfolioSnapshot(double? currentValue, double? totalProfit, double? netCapitalDeployed, double? statementReturn, String benchmarkText, String portfolioStatus) {
+  Widget _buildPortfolioSnapshot(double? currentValue, double? totalProfit, double? freshInvestments, double? statementReturn, String benchmarkText, String portfolioStatus) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -208,7 +208,7 @@ class _SummaryTabState extends State<SummaryTab> {
                   Text("Fresh Investments", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
                   const SizedBox(height: 4),
                   Text(
-                    _formatCurrency(netCapitalDeployed),
+                    _formatCurrency(freshInvestments),
                     style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ],
@@ -302,8 +302,6 @@ class _SummaryTabState extends State<SummaryTab> {
     final statementReturn = (fund['statement_return_pct'] as num?)?.toDouble();
     final stampDuty = (fund['stamp_duty_costs'] as num?)?.toDouble() ?? 0.0;
 
-    final netCapital = freshInvestments; 
-
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
@@ -342,7 +340,7 @@ class _SummaryTabState extends State<SummaryTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Fresh Investment", _formatCurrency(netCapital), Colors.black87),
+                _buildMetric("Fresh Investment", _formatCurrency(freshInvestments), Colors.black87),
                 _buildMetric("Profit", (profit != null && profit > 0) ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), _getValueColor(profit)),
                 _buildMetric("Statement Return", _formatPercent(statementReturn), _getValueColor(statementReturn), crossAxisAlignment: CrossAxisAlignment.end),
               ],

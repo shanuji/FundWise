@@ -53,14 +53,15 @@ class CashflowsTab extends StatelessWidget {
 
   Widget _buildTransactionCard(Map<String, dynamic> tx) {
     final date = tx['date']?.toString() ?? 'Unknown Date';
-    final fundName = tx['fund_name']?.toString() ?? tx['scheme']?.toString() ?? 'Unknown Fund';
-    final type = tx['type']?.toString() ?? tx['description']?.toString() ?? 'Transaction';
-    final amount = (tx['amount'] ?? 0.0).toDouble();
-    final units = (tx['units'] ?? 0.0).toDouble();
-    final nav = (tx['nav'] ?? tx['price'] ?? 0.0).toDouble();
+    final fundName = tx['scheme_name']?.toString() ?? tx['fund_name']?.toString() ?? tx['scheme']?.toString() ?? 'Unknown Fund';
+    final type = tx['normalized_type']?.toString() ?? tx['type']?.toString() ?? tx['description']?.toString() ?? 'Transaction';
+    
+    final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+    final units = (tx['units'] as num?)?.toDouble() ?? 0.0;
+    final nav = (tx['nav'] as num?)?.toDouble() ?? (tx['price'] as num?)?.toDouble() ?? 0.0;
 
-    // Determine if this is an inflow (investment) or outflow (redemption)
-    final isInvestment = amount > 0 || type.toLowerCase().contains('buy') || type.toLowerCase().contains('purchase') || type.toLowerCase().contains('sip');
+    final typeUpper = type.toUpperCase();
+    final isInvestment = typeUpper.contains('PURCHASE') || typeUpper.contains('SIP') || typeUpper.contains('SWITCH_IN');
     final displayAmount = amount.abs();
     
     final typeColor = isInvestment ? const Color(0xFF00BFA5) : Colors.redAccent;

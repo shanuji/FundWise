@@ -62,10 +62,27 @@ class CashflowsTab extends StatelessWidget {
 
     final typeUpper = type.toUpperCase();
     final isInvestment = typeUpper.contains('PURCHASE') || typeUpper.contains('SIP') || typeUpper.contains('SWITCH_IN');
+    final isDividendReinvestment = typeUpper.contains('DIVIDEND_REINVESTMENT') || typeUpper.contains('REINVESTMENT');
+    final isStampDuty = typeUpper.contains('STAMP_DUTY');
     final displayAmount = amount.abs();
     
-    final typeColor = isInvestment ? const Color(0xFF00BFA5) : Colors.redAccent;
-    final typeIcon = isInvestment ? Icons.call_made : Icons.call_received;
+    Color typeColor = const Color(0xFF00BFA5);
+    IconData typeIcon = Icons.call_made;
+    String badgeLabel = "INVESTMENT";
+
+    if (isDividendReinvestment) {
+      typeColor = Colors.blue;
+      typeIcon = Icons.autorenew;
+      badgeLabel = "DRIP";
+    } else if (isStampDuty) {
+      typeColor = Colors.orange;
+      typeIcon = Icons.receipt;
+      badgeLabel = "STAMP DUTY";
+    } else if (!isInvestment) {
+      typeColor = Colors.redAccent;
+      typeIcon = Icons.call_received;
+      badgeLabel = "REDEMPTION";
+    }
 
     return Card(
       elevation: 0,
@@ -98,7 +115,7 @@ class CashflowsTab extends StatelessWidget {
                       Icon(typeIcon, size: 12, color: typeColor),
                       const SizedBox(width: 4),
                       Text(
-                        isInvestment ? "INVESTMENT" : "REDEMPTION",
+                        badgeLabel,
                         style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -124,7 +141,7 @@ class CashflowsTab extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Amount", "₹${_formatCurrency(displayAmount)}", isInvestment ? Colors.black87 : Colors.redAccent),
+                _buildMetric("Amount", "₹${_formatCurrency(displayAmount)}", typeColor),
                 _buildMetric("NAV", "₹${_formatCurrency(nav)}", Colors.black87),
                 _buildMetric("Units", units.toStringAsFixed(3), Colors.black87, crossAxisAlignment: CrossAxisAlignment.end),
               ],

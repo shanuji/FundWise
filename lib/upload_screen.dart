@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class UploadScreen extends StatefulWidget {
   final Function(Map<String, dynamic> data)? onUploadSuccess;
 
-  const UploadScreen({Key? key, this.onUploadSuccess}) : super(key: key);
+  const UploadScreen({super.key, this.onUploadSuccess});
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -94,7 +94,7 @@ class _UploadScreenState extends State<UploadScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            // FIX 1: Error message container shown ONLY when there is a real non-empty error message
+            // Error message container shown ONLY when there is a real non-empty error message
             if (_errorMessage.trim().isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(16),

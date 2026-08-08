@@ -205,7 +205,7 @@ class _SummaryTabState extends State<SummaryTab> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Net Capital During Statement", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
+                  Text("Fresh Investments", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
                   const SizedBox(height: 4),
                   Text(
                     _formatCurrency(netCapitalDeployed),
@@ -342,7 +342,7 @@ class _SummaryTabState extends State<SummaryTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMetric("Capital Deployed", _formatCurrency(netCapital), Colors.black87),
+                _buildMetric("Fresh Investment", _formatCurrency(netCapital), Colors.black87),
                 _buildMetric("Profit", (profit != null && profit > 0) ? "+${_formatCurrency(profit)}" : _formatCurrency(profit), _getValueColor(profit)),
                 _buildMetric("Statement Return", _formatPercent(statementReturn), _getValueColor(statementReturn), crossAxisAlignment: CrossAxisAlignment.end),
               ],

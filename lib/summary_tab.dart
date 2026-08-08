@@ -38,11 +38,12 @@ class _SummaryTabState extends State<SummaryTab> {
 
   @override
   Widget build(BuildContext context) {
-    final currentValue = (widget.portfolioSummary['current_portfolio_value'] as num?)?.toDouble();
-    final totalProfit = (widget.portfolioSummary['total_profit'] as num?)?.toDouble();
-    final netCapitalDeployed = (widget.portfolioSummary['total_capital_deployed'] as num?)?.toDouble();
+    // UPDATED KEYS: mapped to ending_portfolio_value, net_wealth_gain, total_statement_investments
+    final currentValue = (widget.portfolioSummary['ending_portfolio_value'] as num?)?.toDouble();
+    final totalProfit = (widget.portfolioSummary['net_wealth_gain'] as num?)?.toDouble();
+    final netCapitalDeployed = (widget.portfolioSummary['total_statement_investments'] as num?)?.toDouble();
     final statementReturn = (widget.portfolioSummary['statement_annualized_return'] as num?)?.toDouble();
-    final benchmarkReturn = (widget.portfolioSummary['benchmark_annualized_return'] as num?)?.toDouble();
+    final benchmarkReturn = (widget.portfolioSummary['nifty_annualized_return'] as num?)?.toDouble();
     
     String benchmarkText = "Benchmark Unavailable";
     if (benchmarkReturn != null) {
@@ -50,7 +51,8 @@ class _SummaryTabState extends State<SummaryTab> {
     }
 
     final validFunds = widget.fundsList.where((fund) {
-      final cVal = (fund['current_value'] as num?)?.toDouble();
+      // UPDATED KEY: ending_market_value
+      final cVal = (fund['ending_market_value'] as num?)?.toDouble();
       if (cVal == null || cVal < 1.0) return false;
       return true;
     }).toList();
@@ -61,16 +63,18 @@ class _SummaryTabState extends State<SummaryTab> {
         final nameB = (b['scheme_name'] ?? '').toString();
         return nameA.compareTo(nameB);
       } else if (_sortOption == 'Profit') {
-        final valA = (a['absolute_profit'] as num?)?.toDouble() ?? -999999999.0;
-        final valB = (b['absolute_profit'] as num?)?.toDouble() ?? -999999999.0;
+        // UPDATED KEY: net_wealth_gain
+        final valA = (a['net_wealth_gain'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['net_wealth_gain'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else if (_sortOption == 'Statement Return') {
         final valA = (a['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
         final valB = (b['statement_annualized_return'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       } else {
-        final valA = (a['current_value'] as num?)?.toDouble() ?? -999999999.0;
-        final valB = (b['current_value'] as num?)?.toDouble() ?? -999999999.0;
+        // UPDATED KEY: ending_market_value
+        final valA = (a['ending_market_value'] as num?)?.toDouble() ?? -999999999.0;
+        final valB = (b['ending_market_value'] as num?)?.toDouble() ?? -999999999.0;
         return valB.compareTo(valA);
       }
     });
@@ -233,7 +237,8 @@ class _SummaryTabState extends State<SummaryTab> {
   Widget _buildBestPerformer(Map<String, dynamic> fund) {
     final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
     final returnPct = (fund['statement_annualized_return'] as num?)?.toDouble();
-    final profit = (fund['absolute_profit'] as num?)?.toDouble();
+    // UPDATED KEY: net_wealth_gain
+    final profit = (fund['net_wealth_gain'] as num?)?.toDouble();
 
     return Card(
       elevation: 0,
@@ -293,13 +298,15 @@ class _SummaryTabState extends State<SummaryTab> {
 
   Widget _buildFundCard(Map<String, dynamic> fund) {
     final fundName = fund['scheme_name']?.toString() ?? 'Unknown Fund';
-    final openingVal = (fund['opening_value'] as num?)?.toDouble();
-    final freshInvestments = (fund['fund_investments'] as num?)?.toDouble();
-    final redemptions = (fund['fund_redemptions'] as num?)?.toDouble();
-    final netCapital = (fund['capital_deployed'] as num?)?.toDouble();
-    final currentVal = (fund['current_value'] as num?)?.toDouble();
-    final profit = (fund['absolute_profit'] as num?)?.toDouble();
+    final openingVal = (fund['opening_market_value'] as num?)?.toDouble(); // UPDATED KEY
+    final freshInvestments = (fund['statement_investments'] as num?)?.toDouble(); // UPDATED KEY
+    final redemptions = (fund['statement_redemptions'] as num?)?.toDouble(); // UPDATED KEY
+    final currentVal = (fund['ending_market_value'] as num?)?.toDouble(); // UPDATED KEY
+    final profit = (fund['net_wealth_gain'] as num?)?.toDouble(); // UPDATED KEY
     final annReturn = (fund['statement_annualized_return'] as num?)?.toDouble();
+
+    // Adjusted capital deployed to match backend `statement_investments` conceptually for display
+    final netCapital = freshInvestments; 
 
     return Card(
       elevation: 0,

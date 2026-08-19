@@ -2,10 +2,10 @@ import 'dart:math' as math;
 
 /// FundWise statement-period return engine.
 ///
-/// Return is based on average capital exposure (capital-days), not XIRR.
-/// Opening value is exposed from the statement start. External investments
-/// increase exposure from their transaction date; withdrawals/redemptions
-/// decrease it. Internal switches are excluded at portfolio level.
+/// Returns are based on average capital exposure (capital-days), not XIRR.
+/// Opening value is exposed from the statement start. Investments increase
+/// exposure from their transaction date; redemptions reduce exposure from
+/// their transaction date. Internal switches are ignored at portfolio level.
 class ReturnEvent {
   final DateTime date;
   final double amount;
@@ -47,6 +47,7 @@ class FundWiseReturnEngine {
     required double openingValue,
     required double closingValue,
     required List<ReturnEvent> events,
+    double costs = 0,
     bool portfolioLevel = false,
   }) {
     final sorted = [...events]..sort((a, b) => a.date.compareTo(b.date));
@@ -106,15 +107,25 @@ class FundWiseReturnEngine {
 
     final periodDays = math.max(1, end.difference(statementStart).inDays);
     final averageExposure = weightedCapitalDays / periodDays;
-
     final effectiveClosingValue = fullyRedeemed ? 0.0 : closingValue;
-    final absoluteGain = effectiveClosingValue + externalWithdrawals + dividends -
-        openingValue - externalInvestments;
+
+    final absoluteGain = effectiveClosingValue +
+        externalWithdrawals +
+        dividends -
+        openingValue -
+        externalInvestments -
+        costs;
 
     final statementReturn = averageExposure == 0
         ? 0.0
         : absoluteGain / averageExposure;
-    final annualized = math.pow(1 + statementReturn, 365 / periodDays) - 1;
+
+    // Keep annualization mathematically valid for losses that do not exceed
+    // the invested capital. A total loss is represented as -100% rather than
+    // producing a fractional-power error.
+    final annualized = statementReturn <= -1
+        ? -1.0
+        : math.pow(1 + statementReturn, 365 / periodDays) - 1;
 
     return ReturnResult(
       absoluteGain: absoluteGain,

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-// Import all your screens
-import 'upload_screen.dart'; 
+import 'upload_screen.dart';
 import 'history_screen.dart';
 import 'insights_screen.dart';
 import 'settings_tab.dart';
+import 'return_calculation_adapter.dart';
 
 void main() {
   runApp(const FundWiseApp());
@@ -19,7 +19,7 @@ class FundWiseApp extends StatelessWidget {
       title: 'FundWise',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primaryColor: const Color(0xFF5E35B1), // Deep Purple
+        primaryColor: const Color(0xFF5E35B1),
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5E35B1)),
         useMaterial3: true,
       ),
@@ -42,29 +42,23 @@ class _MainDashboardState extends State<MainDashboard> {
   List<dynamic> _transactions = [];
 
   void _onDataParsed(Map<String, dynamic> data, List<dynamic> txs) {
+    final recalculatedData = applyFundWiseReturns(data, txs);
     setState(() {
-      _parsedData = data;
+      _parsedData = recalculatedData;
       _transactions = txs;
-      _currentIndex = 2; // Automatically switch to the Insights tab!
+      _currentIndex = 2;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      // 0: Home / Upload
-      UploadScreen(onParseSuccess: _onDataParsed), 
-      
-      // 1: History (Removed 'const' here to fix the build error)
+      UploadScreen(onParseSuccess: _onDataParsed),
       HistoryScreen(),
-      
-      // 2: Insights 
       InsightsScreen(
         parsedData: _parsedData,
         transactions: _transactions,
       ),
-      
-      // 3: Taxes (Passed parsedData to calculate liabilities)
       SettingsTab(
         parsedData: _parsedData,
       ),

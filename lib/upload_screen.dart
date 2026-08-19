@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'upload_service.dart';
 
 class UploadScreen extends StatefulWidget {
-  final ValueChanged<Map<String, dynamic>>? onUploadSuccess;
+  final void Function(Map<String, dynamic> data, List<dynamic> transactions)? onParseSuccess;
 
-  const UploadScreen({super.key, this.onUploadSuccess});
+  const UploadScreen({super.key, this.onParseSuccess});
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -48,12 +48,15 @@ class _UploadScreenState extends State<UploadScreen> {
         return;
       }
 
+      final parsedData = result;
+      final transactions = (result['transactions'] as List<dynamic>?) ?? <dynamic>[];
+
       setState(() {
         _isLoading = false;
         _selectedFileName = 'CAS statement';
       });
 
-      widget.onUploadSuccess?.call(result);
+      widget.onParseSuccess?.call(parsedData, transactions);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -75,11 +78,7 @@ class _UploadScreenState extends State<UploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(
-              Icons.cloud_upload_outlined,
-              size: 80,
-              color: Color(0xFF5E35B1),
-            ),
+            const Icon(Icons.cloud_upload_outlined, size: 80, color: Color(0xFF5E35B1)),
             const SizedBox(height: 16),
             const Text(
               'Upload your Mutual Fund statement',
@@ -99,9 +98,7 @@ class _UploadScreenState extends State<UploadScreen> {
               decoration: InputDecoration(
                 labelText: 'PDF Password (Optional)',
                 prefixIcon: const Icon(Icons.lock_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const SizedBox(height: 24),
@@ -121,14 +118,8 @@ class _UploadScreenState extends State<UploadScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _selectedFileName!,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const Text(
-                            'Analysis completed',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
+                          Text(_selectedFileName!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const Text('Analysis completed', style: TextStyle(color: Colors.grey, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -149,15 +140,7 @@ class _UploadScreenState extends State<UploadScreen> {
                   children: [
                     const Icon(Icons.error_outline, color: Colors.redAccent),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _errorMessage,
-                        style: const TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
+                    Expanded(child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w500))),
                   ],
                 ),
               ),
@@ -168,27 +151,11 @@ class _UploadScreenState extends State<UploadScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF5E35B1),
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: _isLoading
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'Select & Analyze Statement',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                  : const Text('Select & Analyze Statement', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),

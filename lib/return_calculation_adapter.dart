@@ -18,17 +18,14 @@ Map<String, dynamic> applyFundWiseReturns(
   final end = _parseDate(period['to']);
   if (start == null || end == null) return parsedData;
 
-  final txs = transactions
-      .whereType<Map>()
-      .map((e) => e.cast<String, dynamic>())
-      .toList();
+  final txs = transactions.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
 
   for (final fund in funds) {
     final name = fund['scheme_name']?.toString();
     if (name == null || name.isEmpty) continue;
 
     final events = <ReturnEvent>[];
-    double costs = _number(fund['stamp_duty_costs']);
+    double costs = 0;
 
     for (final tx in txs) {
       if (tx['scheme_name']?.toString() != name) continue;
@@ -36,59 +33,35 @@ Map<String, dynamic> applyFundWiseReturns(
       final amount = _number(tx['amount']).abs();
       if (date == null || amount == 0) continue;
 
-      final type = tx['normalized_type']?.toString().toUpperCase();
-      switch (type) {
+      switch (tx['normalized_type']?.toString().toUpperCase()) {
         case 'PURCHASE':
         case 'SIP':
-          events.add(ReturnEvent(
-            date: date,
-            amount: amount,
-            type: ReturnEventType.investment,
-          ));
+          events.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.investment));
           break;
         case 'REDEMPTION':
         case 'SWP':
-          events.add(ReturnEvent(
-            date: date,
-            amount: amount,
-            type: ReturnEventType.redemption,
-          ));
+          events.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.redemption));
           break;
         case 'SWITCH_IN':
-          events.add(ReturnEvent(
-            date: date,
-            amount: amount,
-            type: ReturnEventType.switchIn,
-          ));
+          events.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.switchIn));
           break;
         case 'SWITCH_OUT':
-          events.add(ReturnEvent(
-            date: date,
-            amount: amount,
-            type: ReturnEventType.switchOut,
-          ));
+          events.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.switchOut));
           break;
         case 'DIVIDEND_PAYOUT':
-          events.add(ReturnEvent(
-            date: date,
-            amount: amount,
-            type: ReturnEventType.dividend,
-          ));
+          events.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.dividend));
           break;
         case 'STAMP_DUTY':
-          // Stamp duty affects wealth gain, not invested-capital exposure.
           costs += amount;
           break;
       }
     }
 
-    final opening = _number(fund['opening_market_value']);
-    final closing = _number(fund['ending_market_value']);
     final result = FundWiseReturnEngine.calculate(
       statementStart: start,
       statementEnd: end,
-      openingValue: opening,
-      closingValue: closing,
+      openingValue: _number(fund['opening_market_value']),
+      closingValue: _number(fund['ending_market_value']),
       events: events,
       costs: costs,
     );
@@ -104,53 +77,30 @@ Map<String, dynamic> applyFundWiseReturns(
   }
 
   final portfolioEvents = <ReturnEvent>[];
-  double portfolioCosts = _number(portfolio['total_stamp_duty_costs']);
+  double portfolioCosts = 0;
 
   for (final tx in txs) {
     final date = _parseDate(tx['date']);
     final amount = _number(tx['amount']).abs();
     if (date == null || amount == 0) continue;
 
-    final type = tx['normalized_type']?.toString().toUpperCase();
-    switch (type) {
+    switch (tx['normalized_type']?.toString().toUpperCase()) {
       case 'PURCHASE':
       case 'SIP':
-        portfolioEvents.add(ReturnEvent(
-          date: date,
-          amount: amount,
-          type: ReturnEventType.investment,
-        ));
+        portfolioEvents.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.investment));
         break;
       case 'REDEMPTION':
       case 'SWP':
-        portfolioEvents.add(ReturnEvent(
-          date: date,
-          amount: amount,
-          type: ReturnEventType.redemption,
-        ));
+        portfolioEvents.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.redemption));
         break;
       case 'SWITCH_IN':
-        portfolioEvents.add(ReturnEvent(
-          date: date,
-          amount: amount,
-          type: ReturnEventType.switchIn,
-          internalTransfer: true,
-        ));
+        portfolioEvents.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.switchIn, internalTransfer: true));
         break;
       case 'SWITCH_OUT':
-        portfolioEvents.add(ReturnEvent(
-          date: date,
-          amount: amount,
-          type: ReturnEventType.switchOut,
-          internalTransfer: true,
-        ));
+        portfolioEvents.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.switchOut, internalTransfer: true));
         break;
       case 'DIVIDEND_PAYOUT':
-        portfolioEvents.add(ReturnEvent(
-          date: date,
-          amount: amount,
-          type: ReturnEventType.dividend,
-        ));
+        portfolioEvents.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.dividend));
         break;
       case 'STAMP_DUTY':
         portfolioCosts += amount;
@@ -181,10 +131,7 @@ Map<String, dynamic> applyFundWiseReturns(
   };
 }
 
-DateTime? _parseDate(dynamic value) {
-  if (value == null) return null;
-  return DateTime.tryParse(value.toString());
-}
+DateTime? _parseDate(dynamic value) => value == null ? null : DateTime.tryParse(value.toString());
 
 double _number(dynamic value) {
   if (value is num) return value.toDouble();

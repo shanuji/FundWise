@@ -53,23 +53,22 @@ class FundWiseReturnEngine {
     final sorted = [...events]..sort((a, b) => a.date.compareTo(b.date));
     DateTime end = statementEnd;
     double exposure = openingValue;
-    double weightedCapitalDays = 0;
     double externalInvestments = 0;
     double externalWithdrawals = 0;
+    double weightedCapitalDays = 0;
     double dividends = 0;
     bool fullyRedeemed = false;
-
     DateTime cursor = statementStart;
 
     for (final event in sorted) {
       if (event.date.isBefore(statementStart) || event.date.isAfter(statementEnd)) continue;
 
-      final isInternal = portfolioLevel && event.internalTransfer;
+      final isInternalPortfolioTransfer = portfolioLevel && event.internalTransfer;
       final days = event.date.difference(cursor).inDays;
       if (days > 0) weightedCapitalDays += exposure * days;
       cursor = event.date;
 
-      if (isInternal) continue;
+      if (isInternalPortfolioTransfer) continue;
 
       switch (event.type) {
         case ReturnEventType.investment:
@@ -89,9 +88,11 @@ class FundWiseReturnEngine {
           break;
         case ReturnEventType.switchIn:
           exposure += event.amount;
+          if (!portfolioLevel) externalInvestments += event.amount;
           break;
         case ReturnEventType.switchOut:
           exposure = math.max(0, exposure - event.amount);
+          if (!portfolioLevel) externalWithdrawals += event.amount;
           if (!portfolioLevel && exposure <= 0) {
             end = event.date;
             fullyRedeemed = true;
@@ -119,10 +120,6 @@ class FundWiseReturnEngine {
     final statementReturn = averageExposure == 0
         ? 0.0
         : absoluteGain / averageExposure;
-
-    // Keep annualization mathematically valid for losses that do not exceed
-    // the invested capital. A total loss is represented as -100% rather than
-    // producing a fractional-power error.
     final annualized = statementReturn <= -1
         ? -1.0
         : math.pow(1 + statementReturn, 365 / periodDays) - 1;

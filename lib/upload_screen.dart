@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'upload_service.dart';
 
 class UploadScreen extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onUploadSuccess;
@@ -10,33 +11,63 @@ class UploadScreen extends StatefulWidget {
 }
 
 class _UploadScreenState extends State<UploadScreen> {
+  final StatementUploadService _uploadService = StatementUploadService();
+  final TextEditingController _passwordController = TextEditingController();
+
   String _errorMessage = '';
   bool _isLoading = false;
   String? _selectedFileName;
-  final TextEditingController _passwordController = TextEditingController();
 
-  void _simulateUpload() {
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _analyzeStatement() async {
+    if (_isLoading) return;
+
     setState(() {
       _isLoading = true;
-      _errorMessage = ''; 
+      _errorMessage = '';
+      _selectedFileName = null;
     });
 
-    // Simulate parsing or file picker action
-    Future.delayed(const Duration(seconds: 1), () {
+    try {
+      final result = await _uploadService.uploadAndProcessPDF(
+        password: _passwordController.text,
+      );
+
+      if (!mounted) return;
+
+      if (result == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'No PDF was selected.';
+        });
+        return;
+      }
+
       setState(() {
         _isLoading = false;
-        _selectedFileName = "CAS_Statement.pdf";
-        // If an error occurred, set it here:
-        // _errorMessage = "Failed to parse statement.";
+        _selectedFileName = 'CAS statement';
       });
-    });
+
+      widget.onUploadSuccess?.call(result);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Upload Statement"),
+        title: const Text('Upload Statement'),
         backgroundColor: const Color(0xFF5E35B1),
       ),
       body: SingleChildScrollView(
@@ -44,16 +75,20 @@ class _UploadScreenState extends State<UploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.cloud_upload_outlined, size: 80, color: Color(0xFF5E35B1)),
+            const Icon(
+              Icons.cloud_upload_outlined,
+              size: 80,
+              color: Color(0xFF5E35B1),
+            ),
             const SizedBox(height: 16),
             const Text(
-              "Upload your Mutual Fund statement",
+              'Upload your Mutual Fund statement',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              "Supported formats: CAMS/KFintech PDF",
+              'Supported formats: CAMS/KFintech PDF',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
             ),
@@ -62,9 +97,11 @@ class _UploadScreenState extends State<UploadScreen> {
               controller: _passwordController,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: "PDF Password (Optional)",
+                labelText: 'PDF Password (Optional)',
                 prefixIcon: const Icon(Icons.lock_outline),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -84,8 +121,14 @@ class _UploadScreenState extends State<UploadScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(_selectedFileName!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          const Text("Ready to parse", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text(
+                            _selectedFileName!,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const Text(
+                            'Analysis completed',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
@@ -109,7 +152,10 @@ class _UploadScreenState extends State<UploadScreen> {
                     Expanded(
                       child: Text(
                         _errorMessage,
-                        style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
@@ -118,15 +164,31 @@ class _UploadScreenState extends State<UploadScreen> {
               const SizedBox(height: 16),
             ],
             ElevatedButton(
-              onPressed: _isLoading ? null : _simulateUpload,
+              onPressed: _isLoading ? null : _analyzeStatement,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF5E35B1),
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("Analyze Statement", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Select & Analyze Statement',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ],
         ),

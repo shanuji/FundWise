@@ -63,12 +63,12 @@ class FundWiseReturnEngine {
     for (final event in sorted) {
       if (event.date.isBefore(statementStart) || event.date.isAfter(statementEnd)) continue;
 
-      final isInternalPortfolioTransfer = portfolioLevel && event.internalTransfer;
       final days = event.date.difference(cursor).inDays;
       if (days > 0) weightedCapitalDays += exposure * days;
       cursor = event.date;
 
-      if (isInternalPortfolioTransfer) continue;
+      // A switch between funds is not an external portfolio cashflow.
+      if (portfolioLevel && event.internalTransfer) continue;
 
       switch (event.type) {
         case ReturnEventType.investment:

@@ -23,23 +23,21 @@ class FundNavService {
     required DateTime statementStart,
   }) async {
     if (openingUnits <= 0) return const OpeningValueResolution(0, 'Zero opening units');
-    if (isin.isEmpty) return const OpeningValueResolution(null, 'Missing ISIN');
 
-    // The cache stores the exact NAV date, so repeated analysis of the same CAS
-    // does not hit the network again.
-    for (var daysBack = 0; daysBack <= 7; daysBack++) {
-      final date = statementStart.subtract(Duration(days: daysBack));
-      final cached = await _cache.cachedNav(isin, date);
-      if (cached != null) {
-        return OpeningValueResolution(
-          openingUnits * cached,
-          'Resolved from local NAV cache',
-        );
+    // Prefer a previously verified scheme/NAV mapping. This is the important
+    // part of making repeated CAS analysis fast and independent of Render.
+    if (isin.isNotEmpty) {
+      for (var daysBack = 0; daysBack <= 7; daysBack++) {
+        final date = statementStart.subtract(Duration(days: daysBack));
+        final cached = await _cache.cachedNav(isin, date);
+        if (cached != null && cached > 0) {
+          return OpeningValueResolution(openingUnits * cached, 'Resolved from local NAV cache');
+        }
       }
     }
 
     try {
-      var schemeCode = await _cache.cachedSchemeCode(isin);
+      var schemeCode = isin.isEmpty ? null : await _cache.cachedSchemeCode(isin);
       if (schemeCode == null || schemeCode.isEmpty) {
         schemeCode = await _resolveSchemeCode(isin, schemeName);
       }
@@ -48,14 +46,12 @@ class FundNavService {
       }
 
       final from = statementStart.subtract(const Duration(days: 7));
-      final uri = Uri.parse(
-        '$_baseUrl/mf/$schemeCode'
-        '?startDate=${_iso(from)}&endDate=${_iso(statementStart)}',
-      );
+      final uri = Uri.parse('$_baseUrl/mf/$schemeCode?startDate=${_iso(from)}&endDate=${_iso(statementStart)}');
       final response = await http.get(uri).timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
         return OpeningValueResolution(null, 'MFAPI historical NAV HTTP ${response.statusCode}');
       }
+
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final rows = (body['data'] as List?) ?? const [];
       DateTime? selectedDate;
@@ -70,81 +66,116 @@ class FundNavService {
           selectedNav = nav;
         }
       }
+
       if (selectedDate == null || selectedNav == null) {
         return const OpeningValueResolution(null, 'Opening NAV unavailable from MFAPI');
       }
-      await _cache.cacheNav(isin, selectedDate, selectedNav);
-      return OpeningValueResolution(
-        openingUnits * selectedNav,
-        'Resolved via direct MFAPI historical NAV + local cache',
-      );
+      if (isin.isNotEmpty) await _cache.cacheNav(isin, selectedDate, selectedNav);
+      return OpeningValueResolution(openingUnits * selectedNav, 'Resolved via direct MFAPI historical NAV + local cache');
     } catch (e) {
       return OpeningValueResolution(null, 'NAV lookup unavailable: $e');
     }
   }
 
   Future<String?> _resolveSchemeCode(String isin, String schemeName) async {
-    final query = Uri.encodeQueryComponent(_searchName(schemeName));
-    final uri = Uri.parse('$_baseUrl/mf/search?q=$query');
-    final response = await http.get(uri).timeout(const Duration(seconds: 12));
-    if (response.statusCode != 200) return null;
-    final results = jsonDecode(response.body);
-    if (results is! List) return null;
+    final queries = _searchQueries(schemeName);
+    final candidates = <Map<String, dynamic>>[];
 
-    final candidates = results.whereType<Map>().take(12).toList();
-    final wantsDirect = schemeName.toUpperCase().contains('DIRECT');
-    final wantsGrowth = schemeName.toUpperCase().contains('GROWTH');
-    final ordered = [...candidates]..sort((a, b) {
-      int score(Map x) {
-        final name = x['schemeName']?.toString().toUpperCase() ?? '';
-        var s = 0;
-        if (wantsDirect && name.contains('DIRECT')) s += 20;
-        if (!wantsDirect && name.contains('REGULAR')) s += 20;
-        if (wantsGrowth && name.contains('GROWTH')) s += 10;
-        if (name.contains(_compactName(schemeName))) s += 5;
-        return -s;
+    for (final query in queries) {
+      try {
+        final uri = Uri.parse('$_baseUrl/mf/search?q=${Uri.encodeQueryComponent(query)}');
+        final response = await http.get(uri).timeout(const Duration(seconds: 10));
+        if (response.statusCode != 200) continue;
+        final results = jsonDecode(response.body);
+        if (results is List) {
+          for (final item in results.whereType<Map>()) {
+            final map = item.cast<String, dynamic>();
+            final code = map['schemeCode']?.toString();
+            if (code != null && code.isNotEmpty && !candidates.any((x) => x['schemeCode']?.toString() == code)) {
+              candidates.add(map);
+            }
+          }
+        }
+      } catch (_) {
+        // Try the next simplified query.
       }
-      return score(a).compareTo(score(b));
-    });
+      if (candidates.length >= 30) break;
+    }
 
-    for (final candidate in ordered) {
+    final ordered = [...candidates]..sort((a, b) => _candidateScore(b, isin, schemeName).compareTo(_candidateScore(a, isin, schemeName)));
+
+    for (final candidate in ordered.take(30)) {
       final code = candidate['schemeCode']?.toString();
       if (code == null || code.isEmpty) continue;
       try {
-        final latest = await http
-            .get(Uri.parse('$_baseUrl/mf/$code/latest'))
-            .timeout(const Duration(seconds: 8));
+        final latest = await http.get(Uri.parse('$_baseUrl/mf/$code/latest')).timeout(const Duration(seconds: 8));
         if (latest.statusCode != 200) continue;
-        final body = jsonDecode(latest.body) as Map<String, dynamic>;
-        final meta = body['meta'] as Map?;
-        final growthIsin = meta?['isin_growth']?.toString();
-        if (growthIsin == isin) {
-          final resolvedName = meta?['scheme_name']?.toString() ?? candidate['schemeName']?.toString() ?? '';
+        final body = jsonDecode(latest.body);
+        if (body is! Map) continue;
+        final meta = (body['meta'] as Map?)?.cast<String, dynamic>();
+        final metaIsins = <String>{
+          meta?['isin_growth']?.toString() ?? '',
+          meta?['isin_dividend']?.toString() ?? '',
+          meta?['isin']?.toString() ?? '',
+        }..remove('');
+        final resolvedName = meta?['scheme_name']?.toString() ?? candidate['schemeName']?.toString() ?? '';
+
+        if (isin.isNotEmpty && metaIsins.contains(isin)) {
           await _cache.cacheSchemeCode(isin, code, resolvedName);
           return code;
         }
+
+        // Some older/legacy scheme metadata does not expose ISIN. Only accept
+        // a strong name match in that case; never guess from a weak search hit.
+        if (isin.isEmpty && _nameScore(resolvedName, schemeName) >= 0.78) {
+          return code;
+        }
       } catch (_) {
-        // Continue with the next candidate. A single failed scheme lookup must
-        // never block the entire statement analysis.
+        // A failed candidate must not block the rest of the statement.
       }
     }
     return null;
   }
 
-  String _searchName(String name) {
+  List<String> _searchQueries(String name) {
     var value = name
         .replaceAll(RegExp(r'\([^)]*\)'), ' ')
-        .replaceAll(RegExp(r'\b(ISIN|ADVISOR|NON-DEMAT)\b.*', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\b(ISIN|ADVISOR|ARN|NON-DEMAT)\b.*', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\b(FORMERLY|OPTION|PLAN|GROWTH|DIRECT|REGULAR)\b', caseSensitive: false), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (value.length > 80) value = value.substring(0, 80);
-    return value;
+
+    final parts = value.split(' ');
+    final queries = <String>{};
+    if (value.isNotEmpty) queries.add(value);
+    if (parts.length > 4) queries.add(parts.take(6).join(' '));
+    if (parts.length > 3) queries.add(parts.take(4).join(' '));
+    return queries.where((q) => q.isNotEmpty).toList();
   }
 
-  String _compactName(String name) => _searchName(name).toUpperCase();
+  int _candidateScore(Map<String, dynamic> candidate, String isin, String wanted) {
+    final name = candidate['schemeName']?.toString() ?? '';
+    return (_nameScore(name, wanted) * 100).round() +
+        (name.toUpperCase().contains('DIRECT') == wanted.toUpperCase().contains('DIRECT') ? 10 : 0) +
+        (name.toUpperCase().contains('GROWTH') == wanted.toUpperCase().contains('GROWTH') ? 5 : 0);
+  }
 
-  static String _iso(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  double _nameScore(String a, String b) {
+    final aa = _tokens(a);
+    final bb = _tokens(b);
+    if (aa.isEmpty || bb.isEmpty) return 0;
+    final common = aa.intersection(bb).length;
+    return common / bb.length;
+  }
+
+  Set<String> _tokens(String value) => value
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^A-Z0-9 ]'), ' ')
+      .split(RegExp(r'\s+'))
+      .where((x) => x.length > 2 && !{'DIRECT', 'REGULAR', 'PLAN', 'GROWTH', 'OPTION', 'FUND'}.contains(x))
+      .toSet();
+
+  static String _iso(DateTime date) => '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   static DateTime? _apiDate(String? value) {
     if (value == null) return null;

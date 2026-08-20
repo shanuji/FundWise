@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:pdf_text/pdf_text.dart';
+import 'package:flutter_pdf_text/flutter_pdf_text.dart';
 
 import 'fund_nav_service.dart';
 

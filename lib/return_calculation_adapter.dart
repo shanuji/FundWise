@@ -25,9 +25,16 @@ Map<String, dynamic> applyFundWiseReturns(
     final openingRaw = fund['opening_market_value'];
     if (name == null || name.isEmpty) continue;
 
+    // A fund with no opening units is a zero-opening fund, not an unresolved fund.
+    // The CAS can legitimately contain a fund first purchased during the statement.
     if (openingRaw == null) {
-      fund['return_status'] = 'Unavailable — opening NAV could not be resolved.';
-      continue;
+      final openingUnits = _number(fund['opening_units']);
+      if (openingUnits == 0) {
+        fund['opening_market_value'] = 0.0;
+      } else {
+        fund['return_status'] = 'Unavailable — opening value could not be resolved.';
+        continue;
+      }
     }
 
     final events = <ReturnEvent>[];
@@ -67,7 +74,7 @@ Map<String, dynamic> applyFundWiseReturns(
     final result = FundWiseReturnEngine.calculate(
       statementStart: start,
       statementEnd: end,
-      openingValue: _number(openingRaw),
+      openingValue: _number(fund['opening_market_value']),
       closingValue: _number(fund['ending_market_value']),
       events: events,
       costs: costs,
@@ -86,7 +93,7 @@ Map<String, dynamic> applyFundWiseReturns(
 
   final portfolioOpening = portfolio['opening_portfolio_value'];
   if (portfolioOpening == null) {
-    portfolio['portfolio_return_status'] = 'Unavailable — one or more opening NAVs could not be resolved.';
+    portfolio['portfolio_return_status'] = 'Unavailable — one or more opening values could not be resolved.';
     return {
       ...parsedData,
       'portfolio_summary': portfolio,

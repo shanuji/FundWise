@@ -36,27 +36,32 @@ class LocalCasParser {
       transactions.addAll(parsed.transactions);
     }
 
-    final openingResolved = funds.where((f) => f['opening_market_value'] != null).length;
+    final openingResolved = funds.where((f) => f['opening_value_resolved'] == true).length;
+    final openingComplete = funds.every((f) => f['opening_value_resolved'] == true);
     final opening = funds.fold<double>(0, (s, f) => s + _num(f['opening_market_value']));
     final ending = funds.fold<double>(0, (s, f) => s + _num(f['ending_market_value']));
-    final investments = _sumTransactions(transactions, {'PURCHASE', 'SIP', 'SWITCH_IN'});
-    final redemptions = _sumTransactions(transactions, {'REDEMPTION', 'SWP', 'SWITCH_OUT'});
+    final investments = _sumTransactions(transactions, {'PURCHASE', 'SIP'});
+    final redemptions = _sumTransactions(transactions, {'REDEMPTION', 'SWP'});
+    final switchIns = _sumTransactions(transactions, {'SWITCH_IN'});
+    final switchOuts = _sumTransactions(transactions, {'SWITCH_OUT'});
     final dividends = _sumTransactions(transactions, {'DIVIDEND_PAYOUT'});
     final costs = _sumTransactions(transactions, {'STAMP_DUTY', 'STT_PAID'});
 
     return {
       'portfolio_summary': {
         'statement_period': {'from': _dateString(start), 'to': _dateString(end)},
-        'opening_portfolio_value': openingResolved == funds.length ? opening : null,
+        'opening_portfolio_value': openingComplete ? opening : null,
         'total_statement_investments': investments,
         'total_statement_redemptions': redemptions,
+        'total_switch_ins': switchIns,
+        'total_switch_outs': switchOuts,
         'total_dividend_payouts': dividends,
         'total_stamp_duty_costs': costs,
         'ending_portfolio_value': ending,
-        'portfolio_return_status': openingResolved == funds.length ? 'Complete' : 'Partial (Opening values unresolved)',
+        'portfolio_return_status': openingComplete ? 'Complete' : 'Partial (Opening values unresolved)',
         'benchmark_status': 'Pending client-side calculation',
         'data_quality': {
-          'status': openingResolved == funds.length ? 'complete' : openingResolved > 0 ? 'partial' : 'unresolved',
+          'status': openingComplete ? 'complete' : openingResolved > 0 ? 'partial' : 'unresolved',
           'total_funds': funds.length,
           'resolved_funds': openingResolved,
           'coverage_percentage': funds.isEmpty ? 0.0 : openingResolved / funds.length * 100,
@@ -86,9 +91,11 @@ class LocalCasParser {
 
     double? openingValue;
     String resolutionPath;
+    bool openingResolved;
     if (openingUnits == 0) {
       openingValue = 0;
       resolutionPath = 'Zero opening units';
+      openingResolved = true;
     } else {
       final result = await _navService.resolveOpeningValue(
         isin: isin,
@@ -98,6 +105,7 @@ class LocalCasParser {
       );
       openingValue = result.value;
       resolutionPath = result.path;
+      openingResolved = result.value != null;
     }
 
     return _ParsedScheme(
@@ -107,8 +115,12 @@ class LocalCasParser {
         'isin': isin,
         'folio': folio,
         'opening_market_value': openingValue,
-        'statement_investments': _sumTransactions(txs, {'PURCHASE', 'SIP', 'SWITCH_IN'}),
-        'statement_redemptions': _sumTransactions(txs, {'REDEMPTION', 'SWP', 'SWITCH_OUT'}),
+        'opening_value_resolved': openingResolved,
+        'opening_units': openingUnits,
+        'statement_investments': _sumTransactions(txs, {'PURCHASE', 'SIP'}),
+        'statement_redemptions': _sumTransactions(txs, {'REDEMPTION', 'SWP'}),
+        'switch_ins': _sumTransactions(txs, {'SWITCH_IN'}),
+        'switch_outs': _sumTransactions(txs, {'SWITCH_OUT'}),
         'dividend_payouts': _sumTransactions(txs, {'DIVIDEND_PAYOUT'}),
         'stamp_duty_costs': _sumTransactions(txs, {'STAMP_DUTY', 'STT_PAID'}),
         'ending_market_value': marketValue,
@@ -118,7 +130,7 @@ class LocalCasParser {
         'is_fully_redeemed': closingUnits < 0.001,
         'diagnostic_info': {
           'valuation_date': _dateString(valuationDate),
-          'opening_resolved': openingValue != null,
+          'opening_resolved': openingResolved,
           'total_cost_value': totalCost,
         },
       },

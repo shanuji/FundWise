@@ -211,12 +211,40 @@ class LocalCasParser {
     final result = <int>[];
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
-      if (!RegExp(r'^[A-Z0-9]{2,12}-.+').hasMatch(line)) continue;
+      if (!_isLikelySchemeHeader(line)) continue;
+
       final end = i + 8 < lines.length ? i + 8 : lines.length;
       final window = lines.sublist(i, end).join(' ');
-      if (RegExp(r'ISIN:\s*[A-Z0-9]+', caseSensitive: false).hasMatch(window) || RegExp(r'Opening Unit Balance', caseSensitive: false).hasMatch(window)) result.add(i);
+      if (RegExp(r'ISIN:\s*[A-Z0-9]+', caseSensitive: false).hasMatch(window) || RegExp(r'Opening Unit Balance', caseSensitive: false).hasMatch(window)) {
+        result.add(i);
+      }
     }
     return result;
+  }
+
+  bool _isLikelySchemeHeader(String line) {
+    if (!RegExp(r'^[A-Z0-9]{2,12}-.+').hasMatch(line)) return false;
+
+    final upper = line.toUpperCase();
+
+    // These are common CAS metadata/transaction lines which can look like
+    // scheme-code headers. In particular, KFintech's EOP-0008 distributor
+    // metadata previously split a real scheme block and created a fake fund
+    // named "1 EOP-0008)" with the next scheme's valuation.
+    if (upper.contains('EOP-')) return false;
+    if (upper.contains('DIRECT-CAT')) return false;
+    if (upper.contains('BROKER CODE')) return false;
+    if (upper.contains('SUB BROKER')) return false;
+    if (upper.contains('DISTRIBUTOR')) return false;
+    if (upper.contains('STAMP DUTY')) return false;
+    if (upper.contains('STT PAID')) return false;
+
+    // Page/transaction-table headings such as "Nov-2025 ... NAV ..."
+    // must never become scheme boundaries.
+    if (RegExp(r'^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-\d{4}\b', caseSensitive: false).hasMatch(line)) return false;
+    if (RegExp(r'^(DATE|AMOUNT|PRICE|UNITS|TRANSACTION)\b', caseSensitive: false).hasMatch(line)) return false;
+
+    return true;
   }
 
   static String _schemeName(String header, String code) {

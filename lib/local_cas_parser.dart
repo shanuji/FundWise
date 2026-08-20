@@ -37,7 +37,7 @@ class LocalCasParser {
     }
 
     final openingResolved = funds.where((f) => f['opening_value_resolved'] == true).length;
-    final openingComplete = funds.every((f) => f['opening_value_resolved'] == true);
+    final openingComplete = funds.isNotEmpty && funds.every((f) => f['opening_value_resolved'] == true);
     final opening = funds.fold<double>(0, (s, f) => s + _num(f['opening_market_value']));
     final ending = funds.fold<double>(0, (s, f) => s + _num(f['ending_market_value']));
     final investments = _sumTransactions(transactions, {'PURCHASE', 'SIP'});
@@ -73,26 +73,28 @@ class LocalCasParser {
   }
 
   Future<_ParsedScheme> _parseScheme(List<String> block, String folio, DateTime start, DateTime end) async {
-    final header = block.take(block.length < 3 ? block.length : 3).join(' ');
-    final codeMatch = RegExp(r'^([A-Z0-9]{2,12})-').firstMatch(block.first.trim());
+    final header = block.take(block.length < 8 ? block.length : 8).join(' ');
+    final firstLine = block.firstWhere((line) => line.trim().isNotEmpty, orElse: () => '');
+    final codeMatch = RegExp(r'^([A-Z0-9]{2,12})-').firstMatch(firstLine.trim());
     final code = codeMatch?.group(1) ?? '';
-    final isin = RegExp(r'ISIN:\s*([A-Z0-9]+)').firstMatch(header)?.group(1) ?? '';
-    final name = _schemeName(header, code);
     final joined = block.join('\n');
+    final isin = RegExp(r'ISIN:\s*([A-Z0-9]+)', caseSensitive: false).firstMatch(joined)?.group(1) ?? '';
+    final name = _schemeName(header, code);
 
-    final openingUnits = _firstNumber(joined, r'Opening Unit Balance:\s*([\d,]+\.\d+)') ?? 0;
-    final closingUnits = _firstNumber(joined, r'Closing Unit Balance:\s*([\d,]+\.\d+)') ?? 0;
-    final navMatch = RegExp(r'NAV on\s+(\d{2}-[A-Za-z]{3}-\d{4}):\s*(?:INR\s*)?([\d,]+\.\d+)').firstMatch(joined);
+    final openingUnits = _firstNumber(joined, r'Opening Unit Balance:?\s*([\d,]+\.\d+)') ?? 0;
+    final closingUnits = _firstNumber(joined, r'Closing Unit Balance:?\s*([\d,]+\.\d+)') ?? 0;
+    final navMatch = RegExp(r'NAV on\s+(\d{2}-[A-Za-z]{3}-\d{4})\s*:\s*(?:INR\s*)?([\d,]+\.\d+)', caseSensitive: false).firstMatch(joined);
     final latestNav = navMatch == null ? 0.0 : _parseNumber(navMatch.group(2)!);
     final valuationDate = navMatch == null ? end : _parseDate(navMatch.group(1)!);
-    final marketValue = _firstNumber(joined, r'Market Value on[^:]*:\s*INR\s*([\d,]+\.\d+)') ?? 0;
-    final totalCost = _firstNumber(joined, r'Total Cost Value:\s*([\d,]+\.\d+)') ?? 0;
+    final valuationMatch = RegExp(r'(?:Valuation|Market Value) on\s+\d{2}-[A-Za-z]{3}-\d{4}\s*:\s*(?:INR\s*)?([\d,]+\.\d+)', caseSensitive: false).firstMatch(joined);
+    final marketValue = valuationMatch == null ? 0.0 : _parseNumber(valuationMatch.group(1)!);
+    final totalCost = _firstNumber(joined, r'Total Cost Value:?\s*([\d,]+\.\d+)', caseSensitive: false) ?? 0;
     final txs = _parseTransactions(block, name, folio, start, end);
 
     double? openingValue;
     String resolutionPath;
     bool openingResolved;
-    if (openingUnits == 0) {
+    if (openingUnits <= 0) {
       openingValue = 0;
       resolutionPath = 'Zero opening units';
       openingResolved = true;
@@ -140,28 +142,31 @@ class LocalCasParser {
 
   List<Map<String, dynamic>> _parseTransactions(List<String> block, String scheme, String folio, DateTime start, DateTime end) {
     final rows = <Map<String, dynamic>>[];
-    final dateLine = RegExp(r'^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.*)$');
-    final kind = RegExp(r'^(Switch-In|Switch Out|Sys\. Investment|Systematic Investment|Lateral Shift (Out|In)|\*\*\*\s*(Stamp Duty|STT Paid|Invalid Switch|STPRegistered))', caseSensitive: false);
+    final dateLine = RegExp(r'^(\d{2}-[A-Za-z]{3}-\d{4})(?:\s+(.*))?$');
 
     for (var i = 0; i < block.length; i++) {
-      final m = dateLine.firstMatch(block[i].trim());
+      final first = block[i].trim();
+      final m = dateLine.firstMatch(first);
       if (m == null) continue;
       final date = _parseDate(m.group(1)!);
       if (date.isBefore(start) || date.isAfter(end)) continue;
-      var description = m.group(2)!.trim();
+
+      var description = (m.group(2) ?? '').trim();
       var j = i + 1;
       while (j < block.length && !dateLine.hasMatch(block[j].trim())) {
         final next = block[j].trim();
-        if (next.startsWith('Closing Unit Balance:') || next.startsWith('NAV on ')) break;
+        if (next.startsWith('Closing Unit Balance') || next.startsWith('NAV on ') || next.startsWith('Valuation on ')) break;
         if (next.isNotEmpty) description = '$description $next'.replaceAll(RegExp(r'\s+'), ' ').trim();
         j++;
       }
       i = j - 1;
-      if (!kind.hasMatch(description)) continue;
+
       final type = _normalize(description);
       if (type == 'IGNORED') continue;
       final amount = _extractAmount(description);
-      if (amount == null) continue;
+      if (amount == null || amount <= 0) continue;
+
+      final numericFields = _decimalFieldsAfterFirstAmount(description);
       rows.add({
         'date': _dateString(date),
         'scheme_name': scheme,
@@ -169,66 +174,24 @@ class LocalCasParser {
         'description': description,
         'normalized_type': type,
         'amount': amount,
-        'units': 0.0,
-        'nav': 0.0,
+        'units': numericFields.isNotEmpty ? numericFields[0] : 0.0,
+        'nav': numericFields.length > 1 ? numericFields[1] : 0.0,
       });
     }
-
-    if (rows.isNotEmpty) return rows;
-    return _columnarFallback(block, scheme, folio, start, end);
-  }
-
-  List<Map<String, dynamic>> _columnarFallback(List<String> block, String scheme, String folio, DateTime start, DateTime end) {
-    final dates = <DateTime>[];
-    final descriptions = <String>[];
-    final amounts = <double>[];
-    final dateOnly = RegExp(r'^\d{2}-[A-Za-z]{3}-\d{4}$');
-    final money = RegExp(r'^\(?[\d,]+\.\d{2}\)?$');
-    final kind = RegExp(r'^(Switch-In|Switch Out|Sys\. Investment|Systematic Investment|Lateral Shift (Out|In)|\*\*\*\s*(Stamp Duty|STT Paid|Invalid Switch|STPRegistered))', caseSensitive: false);
-
-    for (final raw in block) {
-      final line = raw.trim();
-      if (dateOnly.hasMatch(line)) {
-        final date = _parseDate(line);
-        if (!date.isBefore(start) && !date.isAfter(end)) dates.add(date);
-      } else if (kind.hasMatch(line)) {
-        descriptions.add(line);
-      } else if (money.hasMatch(line.replaceAll(' ', ''))) {
-        amounts.add(_parseNumber(line).abs());
-      }
-    }
-
-    final result = <Map<String, dynamic>>[];
-    final count = dates.length < descriptions.length ? dates.length : descriptions.length;
-    var amountIndex = 0;
-    for (var i = 0; i < count; i++) {
-      final type = _normalize(descriptions[i]);
-      if (type == 'IGNORED' || amountIndex >= amounts.length) continue;
-      result.add({
-        'date': _dateString(dates[i]),
-        'scheme_name': scheme,
-        'folio': folio,
-        'description': descriptions[i],
-        'normalized_type': type,
-        'amount': amounts[amountIndex++],
-        'units': 0.0,
-        'nav': 0.0,
-      });
-    }
-    return result;
+    return rows;
   }
 
   String _normalize(String description) {
-    final c = description.toUpperCase();
-    if (c.contains('INVALID SWITCH') || c.contains('STPREGISTERED')) return 'IGNORED';
-    if (c.contains('STAMP DUTY')) return 'STAMP_DUTY';
-    if (c.contains('STT PAID')) return 'STT_PAID';
+    final c = description.toUpperCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (c.contains('INVALID SWITCH') || c.contains('STPREGISTERED') || c.contains('UPDATION OF KYC')) return 'IGNORED';
+    if (c.contains('STAMP') && c.contains('DUTY')) return 'STAMP_DUTY';
+    if (c.contains('STT') && c.contains('PAID')) return 'STT_PAID';
     if (c.contains('DIVIDEND') && (c.contains('PAYOUT') || c.contains('TRANSFER') || c.contains('ISSUED'))) return 'DIVIDEND_PAYOUT';
-    if (c.startsWith('LATERAL SHIFT IN') || c.startsWith('SWITCH-IN')) return 'SWITCH_IN';
-    if (c.startsWith('LATERAL SHIFT OUT') || c.startsWith('SWITCH OUT')) return 'SWITCH_OUT';
+    if ((c.contains('LATERAL SHIFT') || c.contains('SWITCH')) && c.contains('IN')) return 'SWITCH_IN';
+    if ((c.contains('LATERAL SHIFT') || c.contains('SWITCH')) && c.contains('OUT')) return 'SWITCH_OUT';
     if (c.contains('SWP') || c.contains('REDEMPTION') || c.contains('SELL')) return 'REDEMPTION';
     if (c.contains('SIP') || c.contains('SYS. INVESTMENT') || c.contains('SYSTEMATIC INVESTMENT')) return 'SIP';
-    if (c.contains('PURCHASE') || c.contains('LUMPSUM') || c.contains('ADDITIONAL')) return 'PURCHASE';
+    if (c.contains('PURCHASE') || c.contains('LUMPSUM') || c.contains('ADDITIONAL') || c.contains('INITIAL PURCHASE') || c.contains('NFO')) return 'PURCHASE';
     return 'IGNORED';
   }
 
@@ -237,22 +200,31 @@ class LocalCasParser {
     return m == null ? null : _parseNumber(m.group(0)!);
   }
 
+  static List<double> _decimalFieldsAfterFirstAmount(String text) {
+    final first = RegExp(r'\(?[\d,]+\.\d{2}\)?').firstMatch(text);
+    if (first == null) return const [];
+    final rest = text.substring(first.end);
+    return RegExp(r'\b\d+(?:,\d{3})*\.\d+\b').allMatches(rest).map((m) => _parseNumber(m.group(0)!)).take(3).toList();
+  }
+
   List<int> _findHeaders(List<String> lines) {
     final result = <int>[];
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
       if (!RegExp(r'^[A-Z0-9]{2,12}-.+').hasMatch(line)) continue;
-      final end = i + 3 < lines.length ? i + 3 : lines.length;
-      if (lines.sublist(i, end).join(' ').contains('ISIN:')) result.add(i);
+      final end = i + 8 < lines.length ? i + 8 : lines.length;
+      final window = lines.sublist(i, end).join(' ');
+      if (RegExp(r'ISIN:\s*[A-Z0-9]+', caseSensitive: false).hasMatch(window) || RegExp(r'Opening Unit Balance', caseSensitive: false).hasMatch(window)) result.add(i);
     }
     return result;
   }
 
   static String _schemeName(String header, String code) {
-    var value = header.replaceFirst(RegExp('^${RegExp.escape(code)}-'), '');
-    final index = value.toUpperCase().indexOf('- ISIN:');
-    if (index >= 0) value = value.substring(0, index);
-    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    var value = header.replaceFirst(RegExp('^${RegExp.escape(code)}-', caseSensitive: false), '');
+    value = value.replaceFirst(RegExp(r'\s+Registrar\s*:.*$', caseSensitive: false), '');
+    value = value.replaceFirst(RegExp(r'\s+ISIN\s*:.*$', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return value.isEmpty ? 'Unknown Fund' : value;
   }
 
   static DateTime _parseDate(String value) {
@@ -264,7 +236,10 @@ class LocalCasParser {
   static String _dateString(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   static double _parseNumber(String v) => double.tryParse(v.replaceAll(',', '').replaceAll('(', '').replaceAll(')', '').trim()) ?? 0;
   static double _num(dynamic v) => v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
-  static double? _firstNumber(String text, String pattern) => RegExp(pattern, caseSensitive: false).firstMatch(text) == null ? null : _parseNumber(RegExp(pattern, caseSensitive: false).firstMatch(text)!.group(1)!);
+  static double? _firstNumber(String text, String pattern, {bool caseSensitive = false}) {
+    final match = RegExp(pattern, caseSensitive: caseSensitive).firstMatch(text);
+    return match == null ? null : _parseNumber(match.group(1)!);
+  }
   static double _sumTransactions(List<Map<String, dynamic>> txs, Set<String> types) => txs.where((t) => types.contains(t['normalized_type'])).fold<double>(0, (s, t) => s + _num(t['amount']).abs());
 }
 

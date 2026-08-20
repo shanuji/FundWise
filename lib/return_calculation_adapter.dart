@@ -22,7 +22,13 @@ Map<String, dynamic> applyFundWiseReturns(
 
   for (final fund in funds) {
     final name = fund['scheme_name']?.toString();
+    final openingRaw = fund['opening_market_value'];
     if (name == null || name.isEmpty) continue;
+
+    if (openingRaw == null) {
+      fund['return_status'] = 'Unavailable — opening NAV could not be resolved.';
+      continue;
+    }
 
     final events = <ReturnEvent>[];
     double costs = 0;
@@ -52,6 +58,7 @@ Map<String, dynamic> applyFundWiseReturns(
           events.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.dividend));
           break;
         case 'STAMP_DUTY':
+        case 'STT_PAID':
           costs += amount;
           break;
       }
@@ -60,7 +67,7 @@ Map<String, dynamic> applyFundWiseReturns(
     final result = FundWiseReturnEngine.calculate(
       statementStart: start,
       statementEnd: end,
-      openingValue: _number(fund['opening_market_value']),
+      openingValue: _number(openingRaw),
       closingValue: _number(fund['ending_market_value']),
       events: events,
       costs: costs,
@@ -71,9 +78,20 @@ Map<String, dynamic> applyFundWiseReturns(
     fund['statement_annualized_return'] = result.annualizedReturnPct;
     fund['average_capital_exposure'] = result.averageExposure;
     fund['return_calculation_end'] = _dateString(result.calculationEnd);
+    fund['return_status'] = 'Complete';
     fund['return_calculation_note'] = result.endedByFullRedemption
         ? 'Calculation period ends on ${_dateString(result.calculationEnd)} due to full redemption.'
         : null;
+  }
+
+  final portfolioOpening = portfolio['opening_portfolio_value'];
+  if (portfolioOpening == null) {
+    portfolio['portfolio_return_status'] = 'Unavailable — one or more opening NAVs could not be resolved.';
+    return {
+      ...parsedData,
+      'portfolio_summary': portfolio,
+      'funds_breakdown': funds,
+    };
   }
 
   final portfolioEvents = <ReturnEvent>[];
@@ -103,6 +121,7 @@ Map<String, dynamic> applyFundWiseReturns(
         portfolioEvents.add(ReturnEvent(date: date, amount: amount, type: ReturnEventType.dividend));
         break;
       case 'STAMP_DUTY':
+      case 'STT_PAID':
         portfolioCosts += amount;
         break;
     }
@@ -111,7 +130,7 @@ Map<String, dynamic> applyFundWiseReturns(
   final portfolioResult = FundWiseReturnEngine.calculate(
     statementStart: start,
     statementEnd: end,
-    openingValue: _number(portfolio['opening_portfolio_value']),
+    openingValue: _number(portfolioOpening),
     closingValue: _number(portfolio['ending_portfolio_value']),
     events: portfolioEvents,
     costs: portfolioCosts,
@@ -123,6 +142,7 @@ Map<String, dynamic> applyFundWiseReturns(
   portfolio['statement_annualized_return'] = portfolioResult.annualizedReturnPct;
   portfolio['average_capital_exposure'] = portfolioResult.averageExposure;
   portfolio['return_calculation_end'] = _dateString(portfolioResult.calculationEnd);
+  portfolio['portfolio_return_status'] = 'Complete';
 
   return {
     ...parsedData,

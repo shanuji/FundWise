@@ -11,6 +11,16 @@ class StatementUploadService {
   static const Duration requestTimeout = Duration(seconds: 120);
   static const Duration healthTimeout = Duration(seconds: 12);
 
+  Future<XFile?> selectPDF() async {
+    const XTypeGroup pdfGroup = XTypeGroup(
+      label: 'PDFs',
+      extensions: <String>['pdf'],
+    );
+    final file = await openFile(acceptedTypeGroups: <XTypeGroup>[pdfGroup]);
+    if (file == null || file.path.isEmpty) return null;
+    return file;
+  }
+
   Future<bool> checkBackendHealth() async {
     try {
       final response = await http.get(Uri.parse(healthEndpoint)).timeout(healthTimeout);
@@ -24,11 +34,10 @@ class StatementUploadService {
     }
   }
 
-  Future<Map<String, dynamic>?> uploadAndProcessPDF({String password = ""}) async {
-    const XTypeGroup pdfGroup = XTypeGroup(label: 'PDFs', extensions: <String>['pdf']);
-    final XFile? file = await openFile(acceptedTypeGroups: <XTypeGroup>[pdfGroup]);
-    if (file == null || file.path.isEmpty) return null;
-
+  Future<Map<String, dynamic>> analyzeSelectedPDF({
+    required XFile file,
+    String password = "",
+  }) async {
     final healthy = await checkBackendHealth();
     if (!healthy) {
       throw Exception('FundWise analysis server is not responding. Please try again in a moment.');
@@ -54,9 +63,13 @@ class StatementUploadService {
       final response = await http.Response.fromStream(streamedResponse).timeout(requestTimeout);
       final body = response.body.trim();
       if (body.isEmpty) throw Exception('The analysis server returned an empty response.');
-      if (!body.startsWith('{')) throw Exception('The analysis server returned an invalid response (HTTP ${response.statusCode}).');
+      if (!body.startsWith('{')) {
+        throw Exception('The analysis server returned an invalid response (HTTP ${response.statusCode}).');
+      }
       final responseData = jsonDecode(body);
-      if (response.statusCode == 200 && responseData is Map<String, dynamic>) return responseData;
+      if (response.statusCode == 200 && responseData is Map<String, dynamic>) {
+        return responseData;
+      }
       final detail = responseData is Map ? (responseData['detail'] ?? responseData['message']) : null;
       throw Exception(detail?.toString() ?? 'Unknown processing error');
     } on TimeoutException {

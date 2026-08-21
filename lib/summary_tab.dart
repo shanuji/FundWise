@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'market_data_cache.dart';
+
 class SummaryTab extends StatefulWidget {
   final Map<String, dynamic> portfolioSummary;
   final List<dynamic> fundsList;
@@ -19,6 +21,54 @@ class SummaryTab extends StatefulWidget {
 
 class _SummaryTabState extends State<SummaryTab> {
   String _sortOption = 'Current Value';
+  double? _benchmarkReturn;
+  bool _benchmarkLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _benchmarkReturn = (widget.portfolioSummary['nifty_statement_return_pct'] as num?)?.toDouble();
+    _loadBenchmark();
+  }
+
+  @override
+  void didUpdateWidget(covariant SummaryTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldPeriod = oldWidget.portfolioSummary['statement_period']?.toString();
+    final newPeriod = widget.portfolioSummary['statement_period']?.toString();
+    if (oldPeriod != newPeriod) {
+      _benchmarkReturn = (widget.portfolioSummary['nifty_statement_return_pct'] as num?)?.toDouble();
+      _loadBenchmark();
+    }
+  }
+
+  Future<void> _loadBenchmark() async {
+    final period = widget.portfolioSummary['statement_period'];
+    if (period is! Map) return;
+
+    final from = DateTime.tryParse(period['from']?.toString() ?? '');
+    final to = DateTime.tryParse(period['to']?.toString() ?? '');
+    if (from == null || to == null || to.isBefore(from)) return;
+
+    if (mounted) setState(() => _benchmarkLoading = true);
+    try {
+      final history = await MarketDataCache.instance.niftyRange(from, to);
+      if (history.isEmpty) return;
+
+      final first = history.entries.first.value;
+      final last = history.entries.last.value;
+      if (first <= 0) return;
+
+      final returnPct = ((last / first) - 1.0) * 100.0;
+      if (!mounted) return;
+      setState(() => _benchmarkReturn = returnPct);
+    } catch (_) {
+      // Benchmark is supplementary. A network/API failure must not affect
+      // statement parsing, fund calculations, or any existing UI.
+    } finally {
+      if (mounted) setState(() => _benchmarkLoading = false);
+    }
+  }
 
   Color _getValueColor(double? value) {
     if (value == null || value == 0.0) return Colors.grey;
@@ -42,12 +92,12 @@ class _SummaryTabState extends State<SummaryTab> {
     final totalProfit = (widget.portfolioSummary['net_wealth_gain'] as num?)?.toDouble();
     final freshInvestments = (widget.portfolioSummary['total_statement_investments'] as num?)?.toDouble();
     final statementReturn = (widget.portfolioSummary['statement_return_pct'] as num?)?.toDouble();
-    final benchmarkReturn = (widget.portfolioSummary['nifty_statement_return_pct'] as num?)?.toDouble();
     final annualizedReturn = (widget.portfolioSummary['statement_annualized_return'] as num?)?.toDouble();
     final portfolioStatus = widget.portfolioSummary['portfolio_return_status']?.toString() ?? '';
 
-    String benchmarkText = "Benchmark Unavailable";
-    if (benchmarkReturn != null) benchmarkText = "Nifty 50: ${_formatPercent(benchmarkReturn)}";
+    final benchmarkText = _benchmarkReturn != null
+        ? "Nifty 50: ${_formatPercent(_benchmarkReturn)}"
+        : (_benchmarkLoading ? "Nifty 50: Loading…" : "Benchmark Unavailable");
 
     final validFunds = widget.fundsList.toList();
     final sortedFunds = List.from(validFunds)..sort((a, b) {

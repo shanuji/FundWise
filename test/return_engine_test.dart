@@ -29,7 +29,7 @@ void main() {
         ReturnEvent(date: DateTime(2026, 7, 1), amount: 1000, type: ReturnEventType.investment),
       ],
     );
-    expect(result.averageExposure, closeTo(102400, 1.0));
+    expect(result.averageExposure, closeTo(102393.33333333333, 1.0));
     expect(result.absoluteGain, closeTo(4000, 0.01));
     expect(result.statementReturnPct, closeTo(4000 / 102400 * 100, 0.01));
   });

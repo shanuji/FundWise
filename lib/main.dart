@@ -23,10 +23,10 @@ class EquityBasketApp extends StatelessWidget { const EquityBasketApp({super.key
 
 class Home extends StatefulWidget { const Home({super.key}); @override State<Home> createState()=>_HomeState(); }
 class _HomeState extends State<Home> {
- int tab=0; bool ready=false; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={};
+ int tab=0; bool ready=false; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0;
  @override void initState(){super.initState();load();}
- Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
- Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));}
+ Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
+ Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);}
  List<Trade> byBasket(String id)=>trades.where((t)=>t.basketId==id).toList()..sort((a,b)=>a.date.compareTo(b.date));
  Map<String,Holding> holdings(String id){final m=<String,Holding>{};for(final t in byBasket(id)){final s=t.symbol.toUpperCase();final h=m.putIfAbsent(s,()=>Holding(s));if(t.side=='BUY'){h.qty+=t.qty;h.cost+=t.qty*t.price+t.charges;}else{final q=t.qty.clamp(0.0,h.qty);final avg=h.qty==0?0:h.cost/h.qty;h.qty-=q;h.cost-=avg*q;}}m.removeWhere((k,h)=>h.qty<=0.0000001);for(final h in m.values){h.price=prices[h.symbol]??(h.qty==0?0:h.cost/h.qty);}return m;}
  Map<String,Holding> all(){final m=<String,Holding>{};for(final b in baskets){for(final e in holdings(b.id).entries){final h=m.putIfAbsent(e.key,()=>Holding(e.key));h.qty+=e.value.qty;h.cost+=e.value.cost;h.price=prices[e.key]??e.value.price;}}return m;}
@@ -165,8 +165,47 @@ class _HomeState extends State<Home> {
     }
     return (low + high) / 2;
   }
+ Map<String,double> _taxEstimate() {
+   final grouped=<String,List<Trade>>{};
+   for(final t in trades){grouped.putIfAbsent('${t.basketId}|${t.symbol.toUpperCase()}',()=>[]).add(t);}
+   var stcg=0.0,ltcg=0.0;
+   for(final entries in grouped.values){
+     entries.sort((a,b)=>a.date.compareTo(b.date));
+     final lots=<Map<String,dynamic>>[];
+     for(final t in entries){
+       if(t.side=='BUY'){lots.add({'qty':t.qty,'unitCost':t.price+(t.qty>0?t.charges/t.qty:0),'date':t.date});continue;}
+       var toSell=t.qty;
+       for(final lot in lots){
+         if(toSell<=0)break;
+         final remaining=(lot['qty'] as double);if(remaining<=0)continue;
+         final match=toSell<remaining?toSell:remaining;
+         final unitCost=lot['unitCost'] as double;
+         final holdingDays=t.date.difference(lot['date'] as DateTime).inDays;
+         final proceeds=match*t.price-(t.qty>0?t.charges*match/t.qty:0);
+         final gain=proceeds-match*unitCost;
+         if(holdingDays>365)ltcg+=gain;else stcg+=gain;
+         lot['qty']=remaining-match;toSell-=match;
+       }
+     }
+   }
+   final ltcgTaxable=(ltcg-ltcgExemption).clamp(0.0,double.infinity);
+   final beforeCess=(stcg*(stcgRate/100))+(ltcgTaxable*(ltcgRate/100));
+   final cess=beforeCess*(cessRate/100);
+   return {'stcgGain':stcg,'ltcgGain':ltcg,'taxableLtcg':ltcgTaxable,'baseTax':beforeCess,'cess':cess,'estimatedTax':beforeCess+cess};
+ }
+ Future<void> _editTaxSettings() async {
+   final s=TextEditingController(text:stcgRate.toStringAsFixed(2));final l=TextEditingController(text:ltcgRate.toStringAsFixed(2));final e=TextEditingController(text:ltcgExemption.toStringAsFixed(0));final c=TextEditingController(text:cessRate.toStringAsFixed(2));
+   final form=GlobalKey<FormState>();
+   final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:const Text('Tax estimate assumptions'),content:Form(key:form,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+     TextFormField(controller:s,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Short-term rate (%)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter a valid rate':null),
+     TextFormField(controller:l,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Long-term rate (%)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter a valid rate':null),
+     TextFormField(controller:e,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'LTCG exemption assumption (₹)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter a valid amount':null),
+     TextFormField(controller:c,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Cess rate (%)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter a valid rate':null),
+   ]))),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,form.currentState!.validate()),child:const Text('Save'))]));
+   if(ok==true){stcgRate=double.parse(s.text);ltcgRate=double.parse(l.text);ltcgExemption=double.parse(e.text);cessRate=double.parse(c.text);setState((){});await save();}
+ }
  Widget reportsPage(){
-   final holdings=all(); final years=_realisedByYear(); final irr=_xirr();
+   final holdings=all(); final years=_realisedByYear(); final irr=_xirr(); final tax=_taxEstimate();
    final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.qty*t.price+t.charges);
    final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);
    final sortedYears=years.keys.toList()..sort((a,b)=>b.compareTo(a));
@@ -179,15 +218,30 @@ class _HomeState extends State<Home> {
      reportCard('Money-weighted return (XIRR)',irr==null?'—':(irr*100).toStringAsFixed(2)+'%',Icons.query_stats,irr==null?blue:irr>=0?green:red),
      reportCard('Buy transaction total',money.format(buys),Icons.south_west),
      reportCard('Sell proceeds',money.format(sells),Icons.north_east),
+     const SizedBox(height:12),title('Estimated tax view'),
+     reportCard('Short-term realised gain',money.format(tax['stcgGain']!),Icons.schedule),
+     reportCard('Long-term realised gain',money.format(tax['ltcgGain']!),Icons.event_available),
+     reportCard('Assumed LTCG exemption',money.format(ltcgExemption),Icons.shield_outlined),
+     reportCard('Estimated tax incl. cess',money.format(tax['estimatedTax']!),Icons.receipt_long,red),
+     ListTile(leading:const Icon(Icons.tune,color:blue),title:const Text('Edit tax assumptions'),subtitle:Text('STCG ${stcgRate.toStringAsFixed(2)}% • LTCG ${ltcgRate.toStringAsFixed(2)}% • cess ${cessRate.toStringAsFixed(2)}%'),trailing:const Icon(Icons.chevron_right),onTap:_editTaxSettings),
      const SizedBox(height:12),title('Yearly realised P/L'),
      if(sortedYears.isEmpty) const Padding(padding:EdgeInsets.all(16),child:Text('Realised profit/loss appears after a sell transaction.')),
      ...sortedYears.map((year)=>Card(child:ListTile(title:Text(year),subtitle:const Text('Average-cost estimate'),trailing:Text(money.format(years[year]!),style:TextStyle(fontWeight:FontWeight.bold,color:years[year]!>=0?green:red))))),
      const SizedBox(height:12),title('Holdings'),
      ...holdings.values.map((h)=>Card(child:ListTile(title:Text(h.symbol),subtitle:Text('${h.qty.toStringAsFixed(4)} shares • cost ${money.format(h.cost)}'),trailing:Text(money.format(h.pnl),style:TextStyle(color:h.pnl>=0?green:red,fontWeight:FontWeight.bold))))),
-     const Text('XIRR is an estimate based on dated buys, sells and current manually entered holding value. Realised P/L uses average cost, not tax-lot matching. Not tax advice.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
+     const Text('Tax estimate is an educational approximation using FIFO and user-configured rates, with a simple 365-day holding-period split and one assumed LTCG exemption applied to aggregate gains. It does not model all statutory conditions, set-offs, surcharges, corporate actions or tax-lot rules. Verify with a tax professional.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
+     const Text('XIRR uses dated buys/sells and the current manually entered holding value. Live prices and broker data are not connected.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
    ]);
  }
  Widget reportCard(String s,String v,IconData i,[Color c=blue])=>Card(child:ListTile(leading:Icon(i,color:c),title:Text(s),trailing:Text(v,style:TextStyle(color:c,fontWeight:FontWeight.bold))));
- Widget settingsPage()=>ListView(padding:const EdgeInsets.all(16),children:[title('Settings'),Card(child:ListTile(leading:const Icon(Icons.price_change,color:blue),title:const Text('Update current prices'),subtitle:const Text('Manually update prices for any active holding'),onTap:pricePicker)),Card(child:ListTile(leading:const Icon(Icons.upload_file,color:blue),title:const Text('Import CSV'),subtitle:const Text('Rows with duplicate transaction IDs are skipped'),onTap:importCsv)),Card(child:ListTile(leading:const Icon(Icons.download,color:blue),title:const Text('Export CSV backup'),onTap:exportCsv)),const Card(child:ListTile(leading:Icon(Icons.storage,color:blue),title:Text('Local storage'),subtitle:Text('Baskets, prices and trades are stored on this device. Export a backup before uninstalling.'))),const Padding(padding:EdgeInsets.all(12),child:Text('No broker connection or live prices. Verify calculations before tax or investment decisions.',style:TextStyle(color:Colors.blueGrey,fontSize:12)))]);
+ Widget settingsPage()=>ListView(padding:const EdgeInsets.all(16),children:[
+   title('Settings'),
+   Card(child:ListTile(leading:const Icon(Icons.price_change,color:blue),title:const Text('Update current prices'),subtitle:const Text('Manually update prices for any active holding'),onTap:pricePicker)),
+   Card(child:ListTile(leading:const Icon(Icons.tune,color:blue),title:const Text('Tax estimate assumptions'),subtitle:Text('STCG ${stcgRate.toStringAsFixed(2)}% • LTCG ${ltcgRate.toStringAsFixed(2)}%'),onTap:_editTaxSettings)),
+   Card(child:ListTile(leading:const Icon(Icons.upload_file,color:blue),title:const Text('Import CSV'),subtitle:const Text('Rows with duplicate transaction IDs are skipped'),onTap:importCsv)),
+   Card(child:ListTile(leading:const Icon(Icons.download,color:blue),title:const Text('Export CSV backup'),onTap:exportCsv)),
+   const Card(child:ListTile(leading:Icon(Icons.storage,color:blue),title:Text('Local storage'),subtitle:Text('Baskets, prices and trades are stored on this device. Export a backup before uninstalling.'))),
+   const Padding(padding:EdgeInsets.all(12),child:Text('Tax outcomes depend on current law and personal circumstances. These inputs drive a rough estimate only. No broker connection or live market prices.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
+ ]);
  Future<void> pricePicker()async{final symbols=all().keys.toList()..sort();if(symbols.isEmpty){toast('Add a buy transaction first.');return;}showModalBottomSheet(context:context,builder:(x)=>SafeArea(child:ListView(shrinkWrap:true,children:[const ListTile(title:Text('Select a holding to update price')),...symbols.map((s)=>ListTile(title:Text(s),subtitle:Text(money.format(prices[s]??0)),trailing:const Icon(Icons.edit),onTap:(){Navigator.pop(x);setPrice(s);} ))])));}
 }

@@ -1,99 +1,11 @@
 import 'package:flutter/material.dart';
-
-import 'upload_screen.dart';
-import 'redemption_helper_screen.dart';
-import 'history_screen.dart';
-import 'settings_tab.dart';
-import 'return_calculation_adapter.dart';
-
-void main() {
-  runApp(const FundWiseApp());
+void main() => runApp(const EquityBasketApp());
+const navy = Color(0xFF071B49), blue = Color(0xFF0878FF), green = Color(0xFF08B86A);
+class EquityBasketApp extends StatelessWidget {
+ const EquityBasketApp({super.key});
+ @override Widget build(BuildContext context) => MaterialApp(title: 'EquityBasket', debugShowCheckedModeBanner: false, theme: ThemeData(useMaterial3:true, colorScheme:ColorScheme.fromSeed(seedColor:blue), scaffoldBackgroundColor:const Color(0xFFF3F7FC)), home: const Dashboard());
 }
-
-class FundWiseApp extends StatelessWidget {
-  const FundWiseApp({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'FundWise Redemption Helper',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primaryColor: const Color(0xFF5E35B1),
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5E35B1)),
-        useMaterial3: true,
-      ),
-      home: const MainDashboard(),
-    );
-  }
-}
-
-class MainDashboard extends StatefulWidget {
-  const MainDashboard({Key? key}) : super(key: key);
-
-  @override
-  State<MainDashboard> createState() => _MainDashboardState();
-}
-
-class _MainDashboardState extends State<MainDashboard> {
-  int _currentIndex = 0;
-
-  Map<String, dynamic> _parsedData = {};
-  List<dynamic> _transactions = [];
-
-  void _onDataParsed(Map<String, dynamic> data, List<dynamic> txs) {
-    final recalculatedData = applyFundWiseReturns(data, txs);
-    setState(() {
-      _parsedData = recalculatedData;
-      _transactions = txs;
-      _currentIndex = 1;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      UploadScreen(onParseSuccess: _onDataParsed),
-      RedemptionHelperScreen(
-        parsedData: _parsedData,
-        transactions: _transactions,
-      ),
-      HistoryScreen(),
-      SettingsTab(parsedData: _parsedData),
-    ];
-
-    return Scaffold(
-      body: screens[_currentIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
-          setState(() => _currentIndex = index);
-        },
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFF5E35B1).withOpacity(0.15),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.upload_file_outlined),
-            selectedIcon: Icon(Icons.upload_file, color: Color(0xFF5E35B1)),
-            label: 'Upload',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet, color: Color(0xFF5E35B1)),
-            label: 'Redeem',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history, color: Color(0xFF5E35B1)),
-            label: 'History',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: Color(0xFF5E35B1)),
-            label: 'Settings',
-          ),
-        ],
-      ),
-    );
-  }
+class Dashboard extends StatelessWidget {
+ const Dashboard({super.key});
+ @override Widget build(BuildContext context) => Scaffold(appBar:AppBar(backgroundColor:navy,foregroundColor:Colors.white,title:const Text('EquityBasket')),body:ListView(padding:const EdgeInsets.all(16),children:[Container(padding:const EdgeInsets.all(22),decoration:BoxDecoration(gradient:const LinearGradient(colors:[navy,Color(0xFF0678B8)]),borderRadius:BorderRadius.circular(24)),child:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('TOTAL PORTFOLIO VALUE',style:TextStyle(color:Colors.white70)),SizedBox(height:8),Text('₹ 0.00',style:TextStyle(color:Colors.white,fontSize:32,fontWeight:FontWeight.bold)),SizedBox(height:8),Text('▲ +0.00%   •   XIRR —',style:TextStyle(color:Color(0xFF48F6A8))),SizedBox(height:24),Text('Invested ₹ 0     Current value ₹ 0',style:TextStyle(color:Colors.white))])),const SizedBox(height:20),const Text('Your Baskets',style:TextStyle(fontSize:20,fontWeight:FontWeight.bold,color:navy)),const SizedBox(height:12),for(final x in ['Core Portfolio','Smallcap Opportunities','Dividend Picks','Swing Trades'])Card(child:ListTile(leading:CircleAvatar(backgroundColor:green.withOpacity(.15),child:const Icon(Icons.stacked_line_chart,color:green)),title:Text(x,style:const TextStyle(fontWeight:FontWeight.bold)),subtitle:const Text('0 stocks • 0 trades'),trailing:const Text('₹ 0.00'))),const SizedBox(height:12),const Text('Starter build: transaction ledger, returns, import, market data and tax calculation still need implementation and validation.',style:TextStyle(color:Colors.blueGrey))]),bottomNavigationBar:const NavigationBar(destinations:[NavigationDestination(icon:Icon(Icons.home),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')])); 
 }

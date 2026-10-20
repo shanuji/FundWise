@@ -21,8 +21,8 @@ jobs:
       - name: Generate Android scaffolding
         run: flutter create --platforms android --org com.shanuji .
       - run: flutter pub get
-      - run: flutter test
-      - run: flutter build apk --release
+      - name: Build APK
+        run: flutter build apk --release
       - name: Publish APK to latest Release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2

@@ -51,7 +51,46 @@ class _HomeState extends State<Home> {
  }
  Future<void> setPrice(String s)async{final c=TextEditingController(text:(prices[s]??0).toString());final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:Text('Current price: '+s),content:TextField(controller:c,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Market price (₹)')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,double.tryParse(c.text)!=null&&double.parse(c.text)>=0),child:const Text('Save'))]));if(ok==true){prices[s]=double.parse(c.text);setState((){});save();}}
  Future<void> exportCsv()async{final rows=<List<dynamic>>[['Date','Basket','Type','Symbol','Quantity','Price','Charges','Transaction ID']];for(final t in trades){final b=baskets.where((b)=>b.id==t.basketId).firstOrNull;rows.add([t.date.toIso8601String(),b?.name??t.basketId,t.side,t.symbol,t.qty,t.price,t.charges,t.id]);}final text=const ListToCsvConverter().convert(rows);final path=await FilePicker.platform.saveFile(fileName:'equitybasket-ledger.csv',type:FileType.custom,allowedExtensions:['csv'],bytes:utf8.encode(text));if(mounted)toast(path==null?'Export cancelled':'CSV saved');}
- Future<void> importCsv()async{final f=await FilePicker.platform.pickFiles(type:FileType.custom,allowedExtensions:['csv'],withData:true);if(f==null||f.files.single.bytes==null)return;try{final rows=const CsvToListConverter().convert(utf8.decode(f.files.single.bytes!));final head=rows.first.map((e)=>e.toString().trim().toLowerCase()).toList();int ix(String s)=>head.indexOf(s);String val(List r,String s)=>ix(s)>=0&&ix(s)<r.length?r[ix(s)].toString().trim():'';int added=0;for(final r in rows.skip(1)){final s=val(r,'symbol').toUpperCase(),side=val(r,'type').toUpperCase(),q=double.tryParse(val(r,'quantity')),p=double.tryParse(val(r,'price'));if(s.isEmpty||!['BUY','SELL'].contains(side)||q==null||p==null||q<=0||p<=0)continue;final id=val(r,'transaction id');if(id.isNotEmpty&&trades.any((t)=>t.id==id))continue;final name=val(r,'basket');var b=baskets.where((b)=>b.name.toLowerCase()==name.toLowerCase()).firstOrNull;if(b==null){b=Basket(DateTime.now().microsecondsSinceEpoch.toString(),name.isEmpty?'Imported':name);baskets.add(b);}trades.add(Trade(id.isEmpty?DateTime.now().microsecondsSinceEpoch.toString():id,b.id,s,side,q,p,double.tryParse(val(r,'charges'))??0,DateTime.tryParse(val(r,'date'))??DateTime.now()));prices.putIfAbsent(s,()=>p);added++;}setState((){});await save();toast('Imported '+added.toString()+' transactions. Review ledger.');}catch(e){toast('CSV import failed: '+e.toString());}}
+ Future<void> importCsv() async {
+   final picked=await FilePicker.platform.pickFiles(type:FileType.custom,allowedExtensions:['csv'],withData:true);
+   if(picked==null||picked.files.single.bytes==null)return;
+   try {
+     final rows=const CsvToListConverter().convert(utf8.decode(picked.files.single.bytes!));
+     if(rows.length<2)throw const FormatException('CSV must contain a header and at least one transaction row.');
+     final header=rows.first.map((e)=>e.toString().trim().toLowerCase()).toList();
+     int col(String s)=>header.indexOf(s);
+     const required=['date','basket','type','symbol','quantity','price'];
+     final missing=required.where((x)=>col(x)<0).toList();
+     if(missing.isNotEmpty)throw FormatException('Missing required columns: ${missing.join(', ')}');
+     String field(List<dynamic> row,String name){final i=col(name);return i>=0&&i<row.length?row[i].toString().trim():'';}
+     final seen=<String>{};var skipped=0,invalid=0;
+     final candidates=<Trade>[];
+     for(final row in rows.skip(1)){
+       final symbol=field(row,'symbol').toUpperCase(),side=field(row,'type').toUpperCase();
+       final quantity=double.tryParse(field(row,'quantity')),unitPrice=double.tryParse(field(row,'price'));
+       final charges=double.tryParse(field(row,'charges'))??0,when=DateTime.tryParse(field(row,'date'));
+       if(symbol.isEmpty||!['BUY','SELL'].contains(side)||quantity==null||quantity<=0||unitPrice==null||unitPrice<=0||charges<0||when==null){invalid++;continue;}
+       final txId=field(row,'transaction id');
+       if(txId.isNotEmpty&&(trades.any((t)=>t.id==txId)||!seen.add(txId))){skipped++;continue;}
+       final basketName=field(row,'basket');
+       var basket=baskets.where((b)=>b.name.toLowerCase()==basketName.toLowerCase()).firstOrNull;
+       if(basket==null){basket=Basket(DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString(),basketName.isEmpty?'Imported':basketName);baskets.add(basket);}
+       final id=txId.isEmpty?DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString():txId;
+       candidates.add(Trade(id,basket.id,symbol,side,quantity,unitPrice,charges,when));
+       prices.putIfAbsent(symbol,()=>unitPrice);
+     }
+     final accepted=<Trade>[],qtyByKey=<String,double>{};
+     final ordered=[...trades,...candidates]..sort((a,b)=>a.date.compareTo(b.date));
+     for(final trade in ordered){
+       final key='${trade.basketId}|${trade.symbol}';final held=qtyByKey[key]??0.0;
+       if(trade.side=='BUY'){qtyByKey[key]=held+trade.qty;if(candidates.contains(trade))accepted.add(trade);}
+       else if(trade.qty<=held+0.0000001){qtyByKey[key]=held-trade.qty;if(candidates.contains(trade))accepted.add(trade);}
+       else if(candidates.contains(trade)){invalid++;}
+     }
+     trades.addAll(accepted);setState((){});await save();
+     if(mounted)toast('Imported ${accepted.length}; skipped ${skipped} duplicate(s); rejected ${invalid} invalid/oversell row(s).');
+   }catch(e){if(mounted)toast('CSV import failed: $e');}
+ }
  @override Widget build(BuildContext c){if(!ready)return const Scaffold(body:Center(child:CircularProgressIndicator()));final pages=[dashboard(),basketPage(),ledgerPage(),reportsPage(),settingsPage()];return Scaffold(appBar:AppBar(title:const Text('EquityBasket',style:TextStyle(fontWeight:FontWeight.bold)),actions:[IconButton(onPressed:()=>addTrade(),icon:const Icon(Icons.add_chart),tooltip:'Add transaction')]),body:pages[tab],floatingActionButton:tab==1?FloatingActionButton.extended(onPressed:addBasket,icon:const Icon(Icons.add),label:const Text('New basket')):tab==2?FloatingActionButton.extended(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Transaction')):null,bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const [NavigationDestination(icon:Icon(Icons.home_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]));}
  Widget title(String s,{VoidCallback? onTap})=>Row(children:[Expanded(child:Text(s,style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold,color:navy))),if(onTap!=null)TextButton(onPressed:onTap,child:const Text('View all'))]);
  Widget metric(String s,String v)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(s,style:const TextStyle(color:Colors.white70,fontSize:12)),const SizedBox(height:5),Text(v,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w600))]));

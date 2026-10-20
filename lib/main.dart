@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
@@ -48,15 +49,63 @@ class EquityBasketApp extends StatelessWidget { const EquityBasketApp({super.key
 
 class Home extends StatefulWidget { const Home({super.key}); @override State<Home> createState()=>_HomeState(); }
 class _HomeState extends State<Home> {
- int tab=0; bool ready=false; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
+ int tab=0; bool ready=false; bool refreshingPrices=false; String? pricesUpdatedAt; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
  @override void initState(){super.initState();load();}
- Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
- Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);}
+ Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;pricesUpdatedAt=p.getString('pricesUpdatedAt');}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
+ Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);if(pricesUpdatedAt!=null)await p.setString('pricesUpdatedAt',pricesUpdatedAt!);}
  List<Trade> byBasket(String id)=>chronologicalTrades(trades.where((t)=>t.basketId==id).toList());
  Map<String,Holding> holdings(String id){final m=<String,Holding>{};for(final t in byBasket(id)){final s=t.symbol.toUpperCase();final h=m.putIfAbsent(s,()=>Holding(s));if(t.side=='BUY'){h.qty+=t.qty;h.cost+=t.qty*t.price+t.charges;}else{final q=t.qty.clamp(0.0,h.qty);final avg=h.qty==0?0:h.cost/h.qty;h.qty-=q;h.cost-=avg*q;}}m.removeWhere((k,h)=>h.qty<=0.0000001);for(final h in m.values){h.price=prices[h.symbol]??(h.qty==0?0:h.cost/h.qty);}return m;}
  Map<String,Holding> all(){final m=<String,Holding>{};for(final b in baskets){for(final e in holdings(b.id).entries){final h=m.putIfAbsent(e.key,()=>Holding(e.key));h.qty+=e.value.qty;h.cost+=e.value.cost;h.price=prices[e.key]??e.value.price;}}return m;}
  double get invested=>all().values.fold(0,(s,h)=>s+h.cost); double get value=>all().values.fold(0,(s,h)=>s+h.value); double get pnl=>value-invested;
- void toast(String s)=>ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s)));
+ void toast(String s)=>ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s))); Future<void> refreshPrices() async {
+   if(refreshingPrices)return;
+   final symbols=all().keys.toSet();
+   if(symbols.isEmpty){toast('Add a buy transaction first.');return;}
+   setState(()=>refreshingPrices=true);
+   try {
+     final updated=<String,double>{};
+     final now=DateTime.now();
+     // Public TejHQ snapshots are end-of-day bhavcopy data, not live intraday quotes.
+     for(final exchange in ['nse','bse']) {
+       for(var back=0;back<=10;back++) {
+         final day=DateTime(now.year,now.month,now.day).subtract(Duration(days:back));
+         final date=day.year.toString().padLeft(4,'0')+'-'+day.month.toString().padLeft(2,'0')+'-'+day.day.toString().padLeft(2,'0');
+         final uri=Uri.https('api.tejhq.dev','/v1/snapshot/'+exchange,{'date':date});
+         final response=await http.get(uri,headers:{'Accept':'application/json'}).timeout(const Duration(seconds:12));
+         if(response.statusCode!=200)continue;
+         final decoded=jsonDecode(response.body);
+         dynamic rows=decoded;
+         if(decoded is Map){rows=decoded['data']??decoded['rows']??decoded['results']??decoded['snapshot']??decoded['items'];}
+         if(rows is! List || rows.isEmpty)continue;
+         for(final row in rows) {
+           if(row is! Map)continue;
+           final rawSymbol=(row['symbol']??row['tradingsymbol']??row['trading_symbol']??row['ticker']??row['scrip']??'').toString().toUpperCase().trim();
+           final rawClose=row['close']??row['close_price']??row['last_price']??row['ltp'];
+           final close=rawClose is num?rawClose.toDouble():double.tryParse(rawClose?.toString()??'');
+           if(rawSymbol.isNotEmpty&&close!=null&&close>0&&symbols.contains(rawSymbol))updated.putIfAbsent(rawSymbol,()=>close);
+         }
+         if(!symbols.any((s)=>!updated.containsKey(s)))break;
+         if(back>=2&&updated.isNotEmpty)break;
+       }
+     }
+     if(updated.isEmpty) {
+       toast('No prices matched your holdings. Check symbols and try after end-of-day data is published.');
+     } else {
+       prices.addAll(updated);
+       pricesUpdatedAt=DateTime.now().toIso8601String();
+       setState((){});
+       await save();
+       final missing=symbols.difference(updated.keys.toSet());
+       var message='Updated '+updated.length.toString()+' holding(s) with end-of-day prices.';
+       if(missing.isNotEmpty)message+=' No match for: '+missing.take(4).join(', ')+(missing.length>4?'…':'')+'.';
+       toast(message);
+     }
+   } catch(e) {
+     toast('Price refresh failed. Your saved prices were kept. Check internet and try again.');
+   } finally {
+     if(mounted)setState(()=>refreshingPrices=false);
+   }
+ }
  Future<void> addBasket()async{final c=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:const Text('New basket'),content:TextField(controller:c,autofocus:true,decoration:const InputDecoration(labelText:'Basket name')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,c.text.trim().isNotEmpty),child:const Text('Create'))]));if(ok==true){baskets.add(Basket(DateTime.now().microsecondsSinceEpoch.toString(),c.text.trim()));setState((){});save();}}
  Future<void> addTrade({Trade? old})async{
  final sym=TextEditingController(text:old?.symbol??''),qty=TextEditingController(text:old?.qty.toString()??''),price=TextEditingController(text:old?.price.toString()??''),fee=TextEditingController(text:old?.charges.toString()??defaultCharges.toString());String bid=old?.basketId??baskets.first.id,side=old?.side??'BUY';DateTime date=old?.date??DateTime.now();final key=GlobalKey<FormState>();
@@ -168,7 +217,7 @@ class _HomeState extends State<Home> {
    }),
    const SizedBox(height:12),title('Quick actions'),
    Row(children:[Expanded(child:action(Icons.add_circle_outline,'Buy / Sell',()=>addTrade())),Expanded(child:action(Icons.upload_file,'Import CSV',importCsv)),Expanded(child:action(Icons.download,'Export CSV',exportCsv))]),
-   const SizedBox(height:14),const Text('Prices are manual. Live market quotes are not connected yet.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
+   const SizedBox(height:14),const Text('Free refresh uses end-of-day NSE/BSE data; it is not intraday live pricing. Manual price entry remains available.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
  ]);
  Widget action(IconData i,String s,VoidCallback f)=>Card(child:InkWell(onTap:f,borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.all(12),child:Column(children:[Icon(i,color:blue),const SizedBox(height:6),Text(s,style:const TextStyle(fontSize:12))]))));
  Widget basketPage()=>ListView(padding:const EdgeInsets.all(16),children:[title('All baskets'),...baskets.map((b){
@@ -347,7 +396,8 @@ class _HomeState extends State<Home> {
  Widget reportCard(String s,String v,IconData i,[Color c=blue])=>Card(child:ListTile(leading:Icon(i,color:c),title:Text(s),trailing:Text(v,style:TextStyle(color:c,fontWeight:FontWeight.bold))));
  Widget settingsPage()=>ListView(padding:const EdgeInsets.all(16),children:[
    title('Settings'),
-   Card(child:ListTile(leading:const Icon(Icons.price_change,color:blue),title:const Text('Update current prices'),subtitle:const Text('Manually update prices for any active holding'),onTap:pricePicker)),
+   Card(child:ListTile(leading:const Icon(Icons.cloud_download,color:blue),title:const Text('Refresh NSE/BSE prices'),subtitle:Text(refreshingPrices?'Fetching latest available end-of-day prices…':pricesUpdatedAt==null?'Free public data • End-of-day, not live':'Last refreshed: '+DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.tryParse(pricesUpdatedAt!)??DateTime.now())),trailing:refreshingPrices?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.refresh),onTap:refreshingPrices?null:refreshPrices)),
+   Card(child:ListTile(leading:const Icon(Icons.price_change,color:blue),title:const Text('Update current prices manually'),subtitle:const Text('Fallback if a symbol is not available in the free data'),onTap:pricePicker)),
    Card(child:ListTile(leading:const Icon(Icons.payments_outlined,color:blue),title:const Text('Default transaction charges'),subtitle:Text('New transaction default: ${money.format(defaultCharges)} (editable per trade)'),onTap:_editDefaultCharges)),
    Card(child:ListTile(leading:const Icon(Icons.tune,color:blue),title:const Text('Tax estimate assumptions'),subtitle:Text('STCG ${stcgRate.toStringAsFixed(2)}% • LTCG ${ltcgRate.toStringAsFixed(2)}%'),onTap:_editTaxSettings)),
    Card(child:ListTile(leading:const Icon(Icons.upload_file,color:blue),title:const Text('Import CSV'),subtitle:const Text('Rows with duplicate transaction IDs are skipped'),onTap:importCsv)),

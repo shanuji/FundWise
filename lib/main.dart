@@ -167,8 +167,8 @@ class _HomeState extends State<Home> {
   }
  Widget reportsPage(){
    final holdings=all(); final years=_realisedByYear(); final irr=_xirr();
-   final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.quantity*t.price+t.charges);
-   final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.quantity*t.price-t.charges);
+   final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.qty*t.price+t.charges);
+   final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);
    final sortedYears=years.keys.toList()..sort((a,b)=>b.compareTo(a));
    return ListView(padding:const EdgeInsets.all(16),children:[
      title('Performance report'),

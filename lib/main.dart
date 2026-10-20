@@ -23,10 +23,10 @@ class EquityBasketApp extends StatelessWidget { const EquityBasketApp({super.key
 
 class Home extends StatefulWidget { const Home({super.key}); @override State<Home> createState()=>_HomeState(); }
 class _HomeState extends State<Home> {
- int tab=0; bool ready=false; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0;
+ int tab=0; bool ready=false; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
  @override void initState(){super.initState();load();}
- Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
- Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);}
+ Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
+ Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);}
  List<Trade> byBasket(String id)=>trades.where((t)=>t.basketId==id).toList()..sort((a,b)=>a.date.compareTo(b.date));
  Map<String,Holding> holdings(String id){final m=<String,Holding>{};for(final t in byBasket(id)){final s=t.symbol.toUpperCase();final h=m.putIfAbsent(s,()=>Holding(s));if(t.side=='BUY'){h.qty+=t.qty;h.cost+=t.qty*t.price+t.charges;}else{final q=t.qty.clamp(0.0,h.qty);final avg=h.qty==0?0:h.cost/h.qty;h.qty-=q;h.cost-=avg*q;}}m.removeWhere((k,h)=>h.qty<=0.0000001);for(final h in m.values){h.price=prices[h.symbol]??(h.qty==0?0:h.cost/h.qty);}return m;}
  Map<String,Holding> all(){final m=<String,Holding>{};for(final b in baskets){for(final e in holdings(b.id).entries){final h=m.putIfAbsent(e.key,()=>Holding(e.key));h.qty+=e.value.qty;h.cost+=e.value.cost;h.price=prices[e.key]??e.value.price;}}return m;}
@@ -34,7 +34,7 @@ class _HomeState extends State<Home> {
  void toast(String s)=>ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s)));
  Future<void> addBasket()async{final c=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:const Text('New basket'),content:TextField(controller:c,autofocus:true,decoration:const InputDecoration(labelText:'Basket name')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,c.text.trim().isNotEmpty),child:const Text('Create'))]));if(ok==true){baskets.add(Basket(DateTime.now().microsecondsSinceEpoch.toString(),c.text.trim()));setState((){});save();}}
  Future<void> addTrade({Trade? old})async{
- final sym=TextEditingController(text:old?.symbol??''),qty=TextEditingController(text:old?.qty.toString()??''),price=TextEditingController(text:old?.price.toString()??''),fee=TextEditingController(text:old?.charges.toString()??'0');String bid=old?.basketId??baskets.first.id,side=old?.side??'BUY';DateTime date=old?.date??DateTime.now();final key=GlobalKey<FormState>();
+ final sym=TextEditingController(text:old?.symbol??''),qty=TextEditingController(text:old?.qty.toString()??''),price=TextEditingController(text:old?.price.toString()??''),fee=TextEditingController(text:old?.charges.toString()??defaultCharges.toString());String bid=old?.basketId??baskets.first.id,side=old?.side??'BUY';DateTime date=old?.date??DateTime.now();final key=GlobalKey<FormState>();
  final ok=await showDialog<bool>(context:context,builder:(x)=>StatefulBuilder(builder:(x,ss)=>AlertDialog(title:Text(old==null?'Record transaction':'Edit transaction'),content:SingleChildScrollView(child:Form(key:key,child:Column(mainAxisSize:MainAxisSize.min,children:[
  DropdownButtonFormField<String>(value:bid,decoration:const InputDecoration(labelText:'Basket'),items:baskets.map((b)=>DropdownMenuItem(value:b.id,child:Text(b.name))).toList(),onChanged:(v)=>ss(()=>bid=v??bid)),
  const SizedBox(height:8),DropdownButtonFormField<String>(value:side,decoration:const InputDecoration(labelText:'Type'),items:const [DropdownMenuItem(value:'BUY',child:Text('Buy')),DropdownMenuItem(value:'SELL',child:Text('Sell'))],onChanged:(v)=>ss(()=>side=v??side)),
@@ -232,6 +232,11 @@ class _HomeState extends State<Home> {
    final cess=beforeCess*(cessRate/100);
    return {'stcgGain':stcg,'ltcgGain':ltcg,'taxableLtcg':ltcgTaxable,'baseTax':beforeCess,'cess':cess,'estimatedTax':beforeCess+cess};
  }
+ Future<void> _editDefaultCharges() async {
+   final controller=TextEditingController(text:defaultCharges.toStringAsFixed(2));
+   final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:const Text('Default transaction charges'),content:TextField(controller:controller,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Default charges per transaction (₹)')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,double.tryParse(controller.text)!=null&&double.parse(controller.text)>=0),child:const Text('Save'))]));
+   if(ok==true){defaultCharges=double.parse(controller.text);setState((){});await save();}
+ }
  Future<void> _editTaxSettings() async {
    final s=TextEditingController(text:stcgRate.toStringAsFixed(2));final l=TextEditingController(text:ltcgRate.toStringAsFixed(2));final e=TextEditingController(text:ltcgExemption.toStringAsFixed(0));final c=TextEditingController(text:cessRate.toStringAsFixed(2));
    final form=GlobalKey<FormState>();
@@ -246,6 +251,11 @@ class _HomeState extends State<Home> {
  Widget reportsPage(){
    final holdings=all(); final years=_realisedByYear(); final irr=_xirr(); final tax=_taxEstimate();
    final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.qty*t.price+t.charges);
+   final absoluteGain=sells+value-buys;
+   final absolutePct=buys>0?absoluteGain/buys*100:null;
+   final isSingleInitialBuy=trades.length==1&&trades.first.side=='BUY';
+   final elapsedDays=trades.isEmpty?1:math.max(1,DateTime.now().difference(trades.first.date).inDays);
+   final cagr=isSingleInitialBuy&&buys>0?math.pow(value/buys,365.25/elapsedDays)-1:null;
    final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);
    final sortedYears=years.keys.toList()..sort((a,b)=>b.compareTo(a));
    return ListView(padding:const EdgeInsets.all(16),children:[
@@ -254,6 +264,8 @@ class _HomeState extends State<Home> {
      reportCard('Market value',money.format(value),Icons.show_chart),
      reportCard('Unrealised profit / loss',money.format(pnl),Icons.trending_up,pnl>=0?green:red),
      reportCard('Realised P/L (average cost)',money.format(years.values.fold(0.0,(s,v)=>s+v)),Icons.check_circle,years.values.fold(0.0,(s,v)=>s+v)>=0?green:red),
+     reportCard('Cumulative absolute return',absolutePct==null?'—':absolutePct.toStringAsFixed(2)+'%',Icons.assessment,absoluteGain>=0?green:red),
+     reportCard('CAGR (single initial buy only)',cagr==null?'— (multiple cash flows)':(cagr*100).toStringAsFixed(2)+'%',Icons.timelapse,cagr==null?blue:cagr>=0?green:red),
      reportCard('Money-weighted return (XIRR)',irr==null?'—':(irr*100).toStringAsFixed(2)+'%',Icons.query_stats,irr==null?blue:irr>=0?green:red),
      reportCard('Buy transaction total',money.format(buys),Icons.south_west),
      reportCard('Sell proceeds',money.format(sells),Icons.north_east),
@@ -276,11 +288,12 @@ class _HomeState extends State<Home> {
  Widget settingsPage()=>ListView(padding:const EdgeInsets.all(16),children:[
    title('Settings'),
    Card(child:ListTile(leading:const Icon(Icons.price_change,color:blue),title:const Text('Update current prices'),subtitle:const Text('Manually update prices for any active holding'),onTap:pricePicker)),
+   Card(child:ListTile(leading:const Icon(Icons.payments_outlined,color:blue),title:const Text('Default transaction charges'),subtitle:Text('New transaction default: ${money.format(defaultCharges)} (editable per trade)'),onTap:_editDefaultCharges)),
    Card(child:ListTile(leading:const Icon(Icons.tune,color:blue),title:const Text('Tax estimate assumptions'),subtitle:Text('STCG ${stcgRate.toStringAsFixed(2)}% • LTCG ${ltcgRate.toStringAsFixed(2)}%'),onTap:_editTaxSettings)),
    Card(child:ListTile(leading:const Icon(Icons.upload_file,color:blue),title:const Text('Import CSV'),subtitle:const Text('Rows with duplicate transaction IDs are skipped'),onTap:importCsv)),
    Card(child:ListTile(leading:const Icon(Icons.download,color:blue),title:const Text('Export CSV backup'),onTap:exportCsv)),
    const Card(child:ListTile(leading:Icon(Icons.storage,color:blue),title:Text('Local storage'),subtitle:Text('Baskets, prices and trades are stored on this device. Export a backup before uninstalling.'))),
-   const Padding(padding:EdgeInsets.all(12),child:Text('Tax outcomes depend on current law and personal circumstances. These inputs drive a rough estimate only. No broker connection or live market prices.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
+   const Padding(padding:EdgeInsets.all(12),child:Text('CAGR is shown only for a single initial buy. With recurring buys and sells, use XIRR. Tax outcomes depend on current law and personal circumstances; estimates are not tax advice.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
  ]);
  Future<void> pricePicker()async{final symbols=all().keys.toList()..sort();if(symbols.isEmpty){toast('Add a buy transaction first.');return;}showModalBottomSheet(context:context,builder:(x)=>SafeArea(child:ListView(shrinkWrap:true,children:[const ListTile(title:Text('Select a holding to update price')),...symbols.map((s)=>ListTile(title:Text(s),subtitle:Text(money.format(prices[s]??0)),trailing:const Icon(Icons.edit),onTap:(){Navigator.pop(x);setPrice(s);} ))])));}
 }

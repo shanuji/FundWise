@@ -56,25 +56,53 @@ class _HomeState extends State<Home> {
    if(picked==null||picked.files.single.bytes==null)return;
    try {
      final rows=const CsvToListConverter().convert(utf8.decode(picked.files.single.bytes!));
-     if(rows.length<2)throw const FormatException('CSV must contain a header and at least one transaction row.');
-     final header=rows.first.map((e)=>e.toString().trim().toLowerCase()).toList();
-     int col(String s)=>header.indexOf(s);
-     const required=['date','basket','type','symbol','quantity','price'];
-     final missing=required.where((x)=>col(x)<0).toList();
-     if(missing.isNotEmpty)throw FormatException('Missing required columns: ${missing.join(', ')}');
-     String field(List<dynamic> row,String name){final i=col(name);return i>=0&&i<row.length?row[i].toString().trim():'';}
-     final seen=<String>{};var skipped=0,invalid=0;
+     if(rows.length<2)throw const FormatException('CSV must contain a header and transaction rows.');
+     const dateAliases=['date','trade date','trade_date','transaction date','order date'];
+     const sideAliases=['type','trade type','buy/sell','action','transaction type','txn type'];
+     const symbolAliases=['symbol','tradingsymbol','trading symbol','scrip','instrument','stock symbol'];
+     const quantityAliases=['quantity','qty','traded quantity','filled quantity','filled qty'];
+     const priceAliases=['price','trade price','average price','avg price','traded price'];
+     const basketAliases=['basket','portfolio'];
+     const chargeAliases=['charges','transaction charges','brokerage'];
+     const idAliases=['transaction id','trade id','trade_id','trade no','trade number','id','order id'];
+     bool hasAny(List<String> header,List<String> aliases)=>aliases.any(header.contains);
+     var headerRow=-1;List<String> header=[];
+     for(var i=0;i<rows.length&&i<15;i++){
+       final candidate=rows[i].map((e)=>e.toString().trim().toLowerCase()).toList();
+       if(hasAny(candidate,dateAliases)&&hasAny(candidate,sideAliases)&&hasAny(candidate,symbolAliases)&&hasAny(candidate,quantityAliases)&&hasAny(candidate,priceAliases)){headerRow=i;header=candidate;break;}
+     }
+     if(headerRow<0)throw const FormatException('Could not find transaction columns. Expected Date/Trade Date, Type/Trade Type, Symbol, Quantity and Price.');
+     int col(List<String> aliases){for(final alias in aliases){final index=header.indexOf(alias);if(index>=0)return index;}return -1;}
+     final dateCol=col(dateAliases),sideCol=col(sideAliases),symbolCol=col(symbolAliases),quantityCol=col(quantityAliases),priceCol=col(priceAliases),basketCol=col(basketAliases),chargesCol=col(chargeAliases),idCol=col(idAliases);
+     String field(List<dynamic> row,int index)=>index>=0&&index<row.length?row[index].toString().trim():'';
+     DateTime? parseDate(String raw){
+       final direct=DateTime.tryParse(raw);if(direct!=null)return direct;
+       final serial=double.tryParse(raw);if(serial!=null&&serial>=20000&&serial<=80000)return DateTime(1899,12,30).add(Duration(days:serial.floor()));
+       for(final format in <DateFormat>[DateFormat('dd-MM-yyyy'),DateFormat('dd/MM/yyyy'),DateFormat('dd-MMM-yyyy'),DateFormat('dd MMM yyyy'),DateFormat('dd/MM/yy'),DateFormat('dd-MM-yy'),DateFormat('dd-MM-yyyy HH:mm:ss'),DateFormat('dd/MM/yyyy HH:mm:ss'),DateFormat('yyyy-MM-dd HH:mm:ss')]){try{return format.parseStrict(raw);}catch(_){}}
+       return null;
+     }
+     final looksLikeZerodha=header.contains('trade id')||header.contains('trading symbol')||header.contains('tradingsymbol');
+     final defaultBasketName=looksLikeZerodha?'Zerodha Import':'Imported Trades';
+     final seenIds=<String>{},seenFingerprints=<String>{};var skipped=0,invalid=0;
      final candidates=<Trade>[];
-     for(final row in rows.skip(1)){
-       final symbol=field(row,'symbol').toUpperCase(),side=field(row,'type').toUpperCase();
-       final quantity=double.tryParse(field(row,'quantity')),unitPrice=double.tryParse(field(row,'price'));
-       final charges=double.tryParse(field(row,'charges'))??0,when=DateTime.tryParse(field(row,'date'));
+     for(final row in rows.skip(headerRow+1)){
+       if(row.every((value)=>value.toString().trim().isEmpty))continue;
+       final symbol=field(row,symbolCol).toUpperCase();
+       var side=field(row,sideCol).toUpperCase();
+       if(side=='B')side='BUY';if(side=='S')side='SELL';
+       final quantity=double.tryParse(field(row,quantityCol).replaceAll(',',''));
+       final unitPrice=double.tryParse(field(row,priceCol).replaceAll(',',''));
+       final charges=double.tryParse(field(row,chargesCol).replaceAll(',',''))??0;
+       final when=parseDate(field(row,dateCol));
        if(symbol.isEmpty||!['BUY','SELL'].contains(side)||quantity==null||quantity<=0||unitPrice==null||unitPrice<=0||charges<0||when==null){invalid++;continue;}
-       final txId=field(row,'transaction id');
-       if(txId.isNotEmpty&&(trades.any((t)=>t.id==txId)||!seen.add(txId))){skipped++;continue;}
-       final basketName=field(row,'basket');
+       final txId=field(row,idCol);
+       final basketNameRaw=field(row,basketCol);final basketName=basketNameRaw.isEmpty?defaultBasketName:basketNameRaw;
+       final fingerprint='${when.toIso8601String()}|${basketName.toLowerCase()}|$side|$symbol|$quantity|$unitPrice';
+       if(txId.isNotEmpty&&(trades.any((t)=>t.id==txId)||!seenIds.add(txId))){skipped++;continue;}
+       if(txId.isEmpty&&(seenFingerprints.contains(fingerprint)||trades.any((t){final b=baskets.where((b)=>b.id==t.basketId);return b.isNotEmpty&&b.first.name.toLowerCase()==basketName.toLowerCase()&&t.date==when&&t.side==side&&t.symbol==symbol&&t.qty==quantity&&t.price==unitPrice;}))){skipped++;continue;}
+       seenFingerprints.add(fingerprint);
        var basket=baskets.where((b)=>b.name.toLowerCase()==basketName.toLowerCase()).firstOrNull;
-       if(basket==null){basket=Basket(DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString(),basketName.isEmpty?'Imported':basketName);baskets.add(basket);}
+       if(basket==null){basket=Basket(DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString(),basketName);baskets.add(basket);}
        final id=txId.isEmpty?DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString():txId;
        candidates.add(Trade(id,basket.id,symbol,side,quantity,unitPrice,charges,when));
        prices.putIfAbsent(symbol,()=>unitPrice);
@@ -88,7 +116,7 @@ class _HomeState extends State<Home> {
        else if(candidates.contains(trade)){invalid++;}
      }
      trades.addAll(accepted);setState((){});await save();
-     if(mounted)toast('Imported ${accepted.length}; skipped ${skipped} duplicate(s); rejected ${invalid} invalid/oversell row(s).');
+     if(mounted)toast('Imported ${accepted.length}; skipped ${skipped} duplicate(s); rejected ${invalid} invalid/oversell row(s). CSV supports EquityBasket exports and common Zerodha tradebook columns; PDF contract notes are not supported yet.');
    }catch(e){if(mounted)toast('CSV import failed: $e');}
  }
  @override Widget build(BuildContext c){if(!ready)return const Scaffold(body:Center(child:CircularProgressIndicator()));final pages=[dashboard(),basketPage(),ledgerPage(),reportsPage(),settingsPage()];return Scaffold(appBar:AppBar(title:const Text('EquityBasket',style:TextStyle(fontWeight:FontWeight.bold)),actions:[IconButton(onPressed:()=>addTrade(),icon:const Icon(Icons.add_chart),tooltip:'Add transaction')]),body:pages[tab],floatingActionButton:tab==1?FloatingActionButton.extended(onPressed:addBasket,icon:const Icon(Icons.add),label:const Text('New basket')):tab==2?FloatingActionButton.extended(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Transaction')):null,bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const [NavigationDestination(icon:Icon(Icons.home_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]));}

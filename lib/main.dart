@@ -124,11 +124,11 @@ class _HomeState extends State<Home> {
       items.sort((a, b) => a.date.compareTo(b.date));
       double quantity = 0, cost = 0;
       for (final trade in items) {
-        if (trade.side == 'BUY') { quantity += trade.quantity; cost += trade.quantity * trade.price + trade.charges; }
+        if (trade.side == 'BUY') { quantity += trade.qty; cost += trade.qty * trade.price + trade.charges; }
         else if (quantity > 0) {
-          final sold = trade.quantity.clamp(0.0, quantity);
+          final sold = trade.qty.clamp(0.0, quantity);
           final average = cost / quantity;
-          final proceeds = sold * trade.price - trade.charges * (sold / trade.quantity);
+          final proceeds = sold * trade.price - trade.charges * (sold / trade.qty);
           final year = trade.date.year.toString();
           result[year] = (result[year] ?? 0) + proceeds - average * sold;
           quantity -= sold; cost -= average * sold;
@@ -140,10 +140,10 @@ class _HomeState extends State<Home> {
   double? _xirr() {
     final flows = <MapEntry<DateTime, double>>[];
     for (final trade in trades) {
-      final amount = trade.quantity * trade.price;
+      final amount = trade.qty * trade.price;
       flows.add(MapEntry(trade.date, trade.side == 'BUY' ? -amount - trade.charges : amount - trade.charges));
     }
-    if (_value > 0) flows.add(MapEntry(DateTime.now(), _value));
+    if (value > 0) flows.add(MapEntry(DateTime.now(), value));
     if (flows.length < 2 || !flows.any((f) => f.value < 0) || !flows.any((f) => f.value > 0)) return null;
     flows.sort((a, b) => a.key.compareTo(b.key));
     final start = flows.first.key;
@@ -183,7 +183,7 @@ class _HomeState extends State<Home> {
      if(sortedYears.isEmpty) const Padding(padding:EdgeInsets.all(16),child:Text('Realised profit/loss appears after a sell transaction.')),
      ...sortedYears.map((year)=>Card(child:ListTile(title:Text(year),subtitle:const Text('Average-cost estimate'),trailing:Text(money.format(years[year]!),style:TextStyle(fontWeight:FontWeight.bold,color:years[year]!>=0?green:red))))),
      const SizedBox(height:12),title('Holdings'),
-     ...holdings.values.map((h)=>Card(child:ListTile(title:Text(h.symbol),subtitle:Text('${h.quantity.toStringAsFixed(4)} shares • cost ${money.format(h.cost)}'),trailing:Text(money.format(h.pnl),style:TextStyle(color:h.pnl>=0?green:red,fontWeight:FontWeight.bold))))),
+     ...holdings.values.map((h)=>Card(child:ListTile(title:Text(h.symbol),subtitle:Text('${h.qty.toStringAsFixed(4)} shares • cost ${money.format(h.cost)}'),trailing:Text(money.format(h.pnl),style:TextStyle(color:h.pnl>=0?green:red,fontWeight:FontWeight.bold))))),
      const Text('XIRR is an estimate based on dated buys, sells and current manually entered holding value. Realised P/L uses average cost, not tax-lot matching. Not tax advice.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
    ]);
  }

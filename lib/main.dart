@@ -74,12 +74,31 @@ class _HomeState extends State<Home> {
  Widget basketPage()=>ListView(padding:const EdgeInsets.all(16),children:[title('All baskets'),...baskets.map((b){
   final h=holdings(b.id);final i=h.values.fold(0.0,(s,x)=>s+x.cost),v=h.values.fold(0.0,(s,x)=>s+x.value);
   return Card(child:ExpansionTile(title:Text(b.name,style:const TextStyle(fontWeight:FontWeight.bold)),subtitle:Text('${h.length} active holdings • ${byBasket(b.id).length} trades'),leading:const Icon(Icons.account_balance_wallet,color:blue),children:[
-   Padding(padding:const EdgeInsets.all(12),child:Column(children:[Text('Value ${money.format(v)}   P/L ${money.format(v-i)}'),if(h.isEmpty)const ListTile(title:Text('No active holdings yet')),...h.values.map((x)=>ListTile(dense:true,title:Text(x.symbol),subtitle:Text('${x.qty.toStringAsFixed(4)} shares • avg cost ${money.format(x.cost/x.qty)}'),trailing:Text(money.format(x.value))),),Wrap(spacing:8,children:[FilledButton.tonal(onPressed:()=>addTrade(),child:const Text('Add trade')),TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),if(baskets.length>1)TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete'))])]))]);
+    Padding(padding:const EdgeInsets.all(12),child:Column(children:[
+      Text('Value ${money.format(v)}   P/L ${money.format(v-i)}'),
+      if(h.isEmpty) const ListTile(title:Text('No active holdings yet')),
+      ...h.values.map((x)=>ListTile(dense:true,title:Text(x.symbol),subtitle:Text('${x.qty.toStringAsFixed(4)} shares • avg cost ${money.format(x.qty>0?x.cost/x.qty:0)}'),trailing:Text(money.format(x.value)))),
+      Wrap(spacing:8,children:[
+        FilledButton.tonal(onPressed:()=>addTrade(),child:const Text('Add trade')),
+        TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),
+        if(baskets.length>1) TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete')),
+      ]),
+    ]))
+   ]));
  }),]);
  Widget ledgerPage(){final list=trades.toList()..sort((a,b)=>b.date.compareTo(a.date));return ListView(padding:const EdgeInsets.all(16),children:[
   Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importCsv,icon:const Icon(Icons.upload_file)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
   if(list.isEmpty)const Padding(padding:EdgeInsets.all(28),child:Text('No transactions yet. Add your first buy or sell.')),
-  ...list.map((t)=>Card(child:ListTile(leading:CircleAvatar(backgroundColor:(t.side=='BUY'?blue:red).withOpacity(.12),child:Icon(t.side=='BUY'?Icons.south_west:Icons.north_east,color:t.side=='BUY'?blue:red)),title:Text('${t.side} • ${t.symbol}',style:const TextStyle(fontWeight:FontWeight.bold)),subtitle:Text('${dates.format(t.date)} • ${t.qty} × ${money.format(t.price)}\nCharges ${money.format(t.charges)}'),isThreeLine:true,trailing:PopupMenuButton<String>(onSelected:(v){if(v=='edit')addTrade(old:t);if(v=='delete')deleteTrade(t);},itemBuilder:(_)=>const [PopupMenuItem(value:'edit',child:Text('Edit')),PopupMenuItem(value:'delete',child:Text('Delete'))]))),
+   ...list.map((t)=>Card(child:ListTile(
+     leading:CircleAvatar(backgroundColor:(t.side=='BUY'?blue:red).withOpacity(.12),child:Icon(t.side=='BUY'?Icons.south_west:Icons.north_east,color:t.side=='BUY'?blue:red)),
+     title:Text('${t.side} • ${t.symbol}',style:const TextStyle(fontWeight:FontWeight.bold)),
+     subtitle:Text('${dates.format(t.date)} • ${t.qty} × ${money.format(t.price)}\\nCharges ${money.format(t.charges)}'),
+     isThreeLine:true,
+     trailing:PopupMenuButton<String>(
+       onSelected:(v){if(v=='edit')addTrade(old:t);if(v=='delete')deleteTrade(t);},
+       itemBuilder:(_)=>const [PopupMenuItem(value:'edit',child:Text('Edit')),PopupMenuItem(value:'delete',child:Text('Delete'))],
+     ),
+   ))),
  ]);}
  Widget reportsPage(){final hs=all();final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.qty*t.price+t.charges);final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);return ListView(padding:const EdgeInsets.all(16),children:[title('Performance report'),reportCard('Portfolio cost basis',money.format(invested),Icons.account_balance_wallet),reportCard('Market value',money.format(value),Icons.show_chart),reportCard('Unrealised profit / loss',money.format(pnl),Icons.trending_up,pnl>=0?green:red),reportCard('Buy transaction total',money.format(buys),Icons.south_west),reportCard('Sell proceeds before cost basis',money.format(sells),Icons.north_east),const SizedBox(height:12),title('Holdings'),...hs.values.map((h)=>Card(child:ListTile(title:Text(h.symbol),subtitle:Text('${h.qty.toStringAsFixed(4)} shares • cost ${money.format(h.cost)}'),trailing:Text(money.format(h.pnl),style:TextStyle(color:h.pnl>=0?green:red,fontWeight:FontWeight.bold))))),const Text('This report currently covers unrealised P/L. Realised P/L, tax-lot matching, XIRR, CAGR and annual reports are not implemented yet.',style:TextStyle(color:Colors.blueGrey,fontSize:12))]);}
  Widget reportCard(String s,String v,IconData i,[Color c=blue])=>Card(child:ListTile(leading:Icon(i,color:c),title:Text(s),trailing:Text(v,style:TextStyle(color:c,fontWeight:FontWeight.bold))));

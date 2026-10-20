@@ -1,28 +1,20 @@
-name: fundwise
-description: A premium mutual fund CAS parser and portfolio tracker.
+name: equity_basket
+description: Personal Indian equity basket tracker.
 publish_to: 'none'
-
 version: 1.0.0+1
-
 environment:
-  sdk: '>=3.0.0 <4.0.0'
-
+  sdk: '>=3.3.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.2
-  file_picker: ^8.0.0
-  file_selector: ^1.0.3
-  http: ^1.2.0
-  intl: ^0.19.0
+  cupertino_icons: ^1.0.8
   shared_preferences: ^2.3.2
-  flutter_pdf_text: ^0.9.0
-  sqflite: ^2.4.1
-
+  file_picker: ^8.1.2
+  intl: ^0.19.0
+  csv: ^6.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
-
+  flutter_lints: ^4.0.0
 flutter:
   uses-material-design: true

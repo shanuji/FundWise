@@ -12,6 +12,22 @@ const navy=Color(0xFF071B49), blue=Color(0xFF0878FF), green=Color(0xFF08B86A), r
 final money=NumberFormat.currency(locale:'en_IN',symbol:'₹',decimalDigits:2);
 final dates=DateFormat('dd MMM yyyy');
 
+class PriceRefreshResult {
+  final Map<String, double> prices;
+  final int unchanged;
+  final bool hasError;
+  final String? errorMessage;
+
+  const PriceRefreshResult({
+    required this.prices,
+    required this.unchanged,
+    this.hasError = false,
+    this.errorMessage,
+  });
+
+  int get updated => prices.length;
+}
+
 class Basket { String id,name; Basket(this.id,this.name); Map<String,dynamic> toJson()=>{'id':id,'name':name}; factory Basket.fromJson(Map<String,dynamic> j)=>Basket(j['id'],j['name']); }
 class Trade {
  String id,basketId,symbol,side; double qty,price,charges; DateTime date;
@@ -57,53 +73,109 @@ class _HomeState extends State<Home> {
  Map<String,Holding> holdings(String id){final m=<String,Holding>{};for(final t in byBasket(id)){final s=t.symbol.toUpperCase();final h=m.putIfAbsent(s,()=>Holding(s));if(t.side=='BUY'){h.qty+=t.qty;h.cost+=t.qty*t.price+t.charges;}else{final q=t.qty.clamp(0.0,h.qty);final avg=h.qty==0?0:h.cost/h.qty;h.qty-=q;h.cost-=avg*q;}}m.removeWhere((k,h)=>h.qty<=0.0000001);for(final h in m.values){h.price=prices[h.symbol]??(h.qty==0?0:h.cost/h.qty);}return m;}
  Map<String,Holding> all(){final m=<String,Holding>{};for(final b in baskets){for(final e in holdings(b.id).entries){final h=m.putIfAbsent(e.key,()=>Holding(e.key));h.qty+=e.value.qty;h.cost+=e.value.cost;h.price=prices[e.key]??e.value.price;}}return m;}
  double get invested=>all().values.fold(0,(s,h)=>s+h.cost); double get value=>all().values.fold(0,(s,h)=>s+h.value); double get pnl=>value-invested;
- void toast(String s)=>ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s))); Future<void> refreshPrices() async {
-   if(refreshingPrices)return;
-   final symbols=all().keys.toSet();
-   if(symbols.isEmpty){toast('Add a buy transaction first.');return;}
-   setState(()=>refreshingPrices=true);
-   try {
-     final updated=<String,double>{};
-     final now=DateTime.now();
-     // Public TejHQ snapshots are end-of-day bhavcopy data, not live intraday quotes.
-     for(final exchange in ['nse','bse']) {
-       for(var back=0;back<=10;back++) {
-         final day=DateTime(now.year,now.month,now.day).subtract(Duration(days:back));
-         final date=day.year.toString().padLeft(4,'0')+'-'+day.month.toString().padLeft(2,'0')+'-'+day.day.toString().padLeft(2,'0');
-         final uri=Uri.https('api.tejhq.dev','/v1/snapshot/'+exchange,{'date':date});
-         final response=await http.get(uri,headers:{'Accept':'application/json'}).timeout(const Duration(seconds:12));
-         if(response.statusCode!=200)continue;
-         final decoded=jsonDecode(response.body);
-         dynamic rows=decoded;
-         if(decoded is Map){rows=decoded['data']??decoded['rows']??decoded['results']??decoded['snapshot']??decoded['items'];}
-         if(rows is! List || rows.isEmpty)continue;
-         for(final row in rows) {
-           if(row is! Map)continue;
-           final rawSymbol=(row['symbol']??row['tradingsymbol']??row['trading_symbol']??row['ticker']??row['scrip']??'').toString().toUpperCase().trim();
-           final rawClose=row['close']??row['close_price']??row['last_price']??row['ltp'];
-           final close=rawClose is num?rawClose.toDouble():double.tryParse(rawClose?.toString()??'');
-           if(rawSymbol.isNotEmpty&&close!=null&&close>0&&symbols.contains(rawSymbol))updated.putIfAbsent(rawSymbol,()=>close);
+ void toast(String s)=>ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s))); Future<PriceRefreshResult> fetchNsePrices(Set<String> holdingSymbols) async {
+   final pending = holdingSymbols.map((s) => s.trim().toUpperCase()).where((s) => s.isNotEmpty).toSet();
+   final updated = <String, double>{};
+   if (pending.isEmpty) {
+     return const PriceRefreshResult(prices: {}, unchanged: 0);
+   }
+
+   var validSnapshotsFound = 0;
+   var currentDate = DateTime.now();
+   String? errorMessage;
+
+   while (validSnapshotsFound < 5 && pending.isNotEmpty) {
+     final dateStr = DateFormat('yyyy-MM-dd').format(currentDate);
+     final uri = Uri.https('api.tejhq.dev', '/v1/snapshot/nse', {'date': dateStr});
+
+     try {
+       final response = await http.get(uri, headers: const {'Accept': 'application/json'})
+           .timeout(const Duration(seconds: 12));
+
+       if (response.statusCode == 404 || response.statusCode == 400) {
+         // No snapshot for this date (often a weekend, holiday, or not-yet-published file).
+       } else if (response.statusCode == 429) {
+         errorMessage = 'TejHQ rate limit reached (HTTP 429).';
+         break;
+       } else if (response.statusCode != 200) {
+         errorMessage = 'TejHQ returned HTTP ${response.statusCode}.';
+         break;
+       } else {
+         final decoded = jsonDecode(response.body);
+         if (decoded is! Map) {
+           errorMessage = 'TejHQ returned an unexpected response format.';
+           break;
          }
-         if(!symbols.any((s)=>!updated.containsKey(s)))break;
-         if(back>=2&&updated.isNotEmpty)break;
+         final rows = decoded['data'];
+         if (rows is! List) {
+           errorMessage = 'TejHQ response did not contain a data array.';
+           break;
+         }
+
+         if (rows.isNotEmpty) {
+           validSnapshotsFound++;
+           for (final row in rows) {
+             if (row is! Map) continue;
+             final rawSymbol = row['symbol'];
+             final rawSeries = row['series'];
+             if (rawSymbol is! String || rawSeries is! String) continue;
+             final symbol = rawSymbol.trim().toUpperCase();
+             if (rawSeries.trim().toUpperCase() != 'EQ' || !pending.contains(symbol)) continue;
+
+             final rawClose = row['close'];
+             final close = rawClose is num ? rawClose.toDouble() : double.tryParse(rawClose?.toString() ?? '');
+             if (close == null || !close.isFinite || close <= 0) continue;
+
+             updated[symbol] = close;
+             pending.remove(symbol);
+           }
+         }
        }
+     } catch (_) {
+       errorMessage = 'Network error, timeout, or invalid response while fetching NSE prices.';
+       break;
      }
-     if(updated.isEmpty) {
-       toast('No prices matched your holdings. Check symbols and try after end-of-day data is published.');
-     } else {
-       prices.addAll(updated);
-       pricesUpdatedAt=DateTime.now().toIso8601String();
-       setState((){});
+
+     currentDate = currentDate.subtract(const Duration(days: 1));
+   }
+
+   return PriceRefreshResult(
+     prices: Map.unmodifiable(updated),
+     unchanged: pending.length,
+     hasError: errorMessage != null,
+     errorMessage: errorMessage,
+   );
+ }
+
+ Future<void> refreshPrices() async {
+   if (refreshingPrices) return;
+   final symbols = all().keys.map((s) => s.trim().toUpperCase()).where((s) => s.isNotEmpty).toSet();
+   if (symbols.isEmpty) {
+     toast('Add a buy transaction first.');
+     return;
+   }
+
+   setState(() => refreshingPrices = true);
+   try {
+     final result = await fetchNsePrices(symbols);
+
+     // Apply only validated positive prices. Unmatched or failed symbols retain their saved values.
+     if (result.prices.isNotEmpty) {
+       prices.addAll(result.prices);
+       pricesUpdatedAt = DateTime.now().toIso8601String();
+       if (mounted) setState(() {});
        await save();
-       final missing=symbols.difference(updated.keys.toSet());
-       var message='Updated '+updated.length.toString()+' holding(s) with end-of-day prices.';
-       if(missing.isNotEmpty)message+=' No match for: '+missing.take(4).join(', ')+(missing.length>4?'…':'')+'.';
-       toast(message);
      }
-   } catch(e) {
-     toast('Price refresh failed. Your saved prices were kept. Check internet and try again.');
+
+     var message = 'Updated ${result.updated}/${symbols.length} NSE price(s). ${result.unchanged} unchanged.';
+     if (result.hasError) {
+       message += ' Refresh stopped: ${result.errorMessage ?? 'provider error'}.';
+     } else if (result.unchanged > 0) {
+       message += ' Unmatched holdings kept their previous prices.';
+     }
+     toast(message);
    } finally {
-     if(mounted)setState(()=>refreshingPrices=false);
+     if (mounted) setState(() => refreshingPrices = false);
    }
  }
  Future<void> addBasket()async{final c=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:const Text('New basket'),content:TextField(controller:c,autofocus:true,decoration:const InputDecoration(labelText:'Basket name')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,c.text.trim().isNotEmpty),child:const Text('Create'))]));if(ok==true){baskets.add(Basket(DateTime.now().microsecondsSinceEpoch.toString(),c.text.trim()));setState((){});save();}}

@@ -251,12 +251,12 @@ class _HomeState extends State<Home> {
  Widget reportsPage(){
    final holdings=all(); final years=_realisedByYear(); final irr=_xirr(); final tax=_taxEstimate();
    final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.qty*t.price+t.charges);
+   final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);
    final absoluteGain=sells+value-buys;
    final absolutePct=buys>0?absoluteGain/buys*100:null;
    final isSingleInitialBuy=trades.length==1&&trades.first.side=='BUY';
    final elapsedDays=trades.isEmpty?1:math.max(1,DateTime.now().difference(trades.first.date).inDays);
    final cagr=isSingleInitialBuy&&buys>0?math.pow(value/buys,365.25/elapsedDays)-1:null;
-   final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);
    final sortedYears=years.keys.toList()..sort((a,b)=>b.compareTo(a));
    return ListView(padding:const EdgeInsets.all(16),children:[
      title('Performance report'),

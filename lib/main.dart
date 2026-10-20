@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
@@ -113,7 +114,79 @@ class _HomeState extends State<Home> {
     final ok = await showDialog<bool>(context: context, builder: (x) => AlertDialog(title: const Text('Delete transaction?'), content: Text('${t.side} ${t.qty} ${t.symbol} will be removed.'), actions: [TextButton(onPressed: () => Navigator.pop(x, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(x, true), child: const Text('Delete'))]));
     if (ok == true) { trades.removeWhere((e) => e.id == t.id); setState(() {}); await save(); }
   }
- Widget reportsPage(){final hs=all();final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.qty*t.price+t.charges);final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.qty*t.price-t.charges);return ListView(padding:const EdgeInsets.all(16),children:[title('Performance report'),reportCard('Portfolio cost basis',money.format(invested),Icons.account_balance_wallet),reportCard('Market value',money.format(value),Icons.show_chart),reportCard('Unrealised profit / loss',money.format(pnl),Icons.trending_up,pnl>=0?green:red),reportCard('Buy transaction total',money.format(buys),Icons.south_west),reportCard('Sell proceeds before cost basis',money.format(sells),Icons.north_east),const SizedBox(height:12),title('Holdings'),...hs.values.map((h)=>Card(child:ListTile(title:Text(h.symbol),subtitle:Text('${h.qty.toStringAsFixed(4)} shares • cost ${money.format(h.cost)}'),trailing:Text(money.format(h.pnl),style:TextStyle(color:h.pnl>=0?green:red,fontWeight:FontWeight.bold))))),const Text('This report currently covers unrealised P/L. Realised P/L, tax-lot matching, XIRR, CAGR and annual reports are not implemented yet.',style:TextStyle(color:Colors.blueGrey,fontSize:12))]);}
+  Map<String, double> _realisedByYear() {
+    final grouped = <String, List<Trade>>{};
+    for (final trade in trades) {
+      grouped.putIfAbsent('${trade.basketId}|${trade.symbol.toUpperCase()}', () => <Trade>[]).add(trade);
+    }
+    final result = <String, double>{};
+    for (final items in grouped.values) {
+      items.sort((a, b) => a.date.compareTo(b.date));
+      double quantity = 0, cost = 0;
+      for (final trade in items) {
+        if (trade.side == 'BUY') { quantity += trade.quantity; cost += trade.quantity * trade.price + trade.charges; }
+        else if (quantity > 0) {
+          final sold = trade.quantity.clamp(0.0, quantity);
+          final average = cost / quantity;
+          final proceeds = sold * trade.price - trade.charges * (sold / trade.quantity);
+          final year = trade.date.year.toString();
+          result[year] = (result[year] ?? 0) + proceeds - average * sold;
+          quantity -= sold; cost -= average * sold;
+        }
+      }
+    }
+    return result;
+  }
+  double? _xirr() {
+    final flows = <MapEntry<DateTime, double>>[];
+    for (final trade in trades) {
+      final amount = trade.quantity * trade.price;
+      flows.add(MapEntry(trade.date, trade.side == 'BUY' ? -amount - trade.charges : amount - trade.charges));
+    }
+    if (_value > 0) flows.add(MapEntry(DateTime.now(), _value));
+    if (flows.length < 2 || !flows.any((f) => f.value < 0) || !flows.any((f) => f.value > 0)) return null;
+    flows.sort((a, b) => a.key.compareTo(b.key));
+    final start = flows.first.key;
+    double npv(double rate) {
+      var total = 0.0;
+      for (final f in flows) {
+        final years = f.key.difference(start).inSeconds / (365.25 * 86400);
+        total += f.value / math.pow(1 + rate, years);
+      }
+      return total;
+    }
+    var low = -0.9999, high = 100.0;
+    var fl = npv(low), fh = npv(high);
+    if (!fl.isFinite || !fh.isFinite || fl.sign == fh.sign) return null;
+    for (var i = 0; i < 180; i++) {
+      final mid = (low + high) / 2, fm = npv(mid);
+      if (fm.abs() < 0.000001) return mid;
+      if (fm.sign == fl.sign) { low = mid; fl = fm; } else { high = mid; fh = fm; }
+    }
+    return (low + high) / 2;
+  }
+ Widget reportsPage(){
+   final holdings=all(); final years=_realisedByYear(); final irr=_xirr();
+   final buys=trades.where((t)=>t.side=='BUY').fold(0.0,(s,t)=>s+t.quantity*t.price+t.charges);
+   final sells=trades.where((t)=>t.side=='SELL').fold(0.0,(s,t)=>s+t.quantity*t.price-t.charges);
+   final sortedYears=years.keys.toList()..sort((a,b)=>b.compareTo(a));
+   return ListView(padding:const EdgeInsets.all(16),children:[
+     title('Performance report'),
+     reportCard('Portfolio cost basis',money.format(invested),Icons.account_balance_wallet),
+     reportCard('Market value',money.format(value),Icons.show_chart),
+     reportCard('Unrealised profit / loss',money.format(pnl),Icons.trending_up,pnl>=0?green:red),
+     reportCard('Realised P/L (average cost)',money.format(years.values.fold(0.0,(s,v)=>s+v)),Icons.check_circle,years.values.fold(0.0,(s,v)=>s+v)>=0?green:red),
+     reportCard('Money-weighted return (XIRR)',irr==null?'—':(irr*100).toStringAsFixed(2)+'%',Icons.query_stats,irr==null?blue:irr>=0?green:red),
+     reportCard('Buy transaction total',money.format(buys),Icons.south_west),
+     reportCard('Sell proceeds',money.format(sells),Icons.north_east),
+     const SizedBox(height:12),title('Yearly realised P/L'),
+     if(sortedYears.isEmpty) const Padding(padding:EdgeInsets.all(16),child:Text('Realised profit/loss appears after a sell transaction.')),
+     ...sortedYears.map((year)=>Card(child:ListTile(title:Text(year),subtitle:const Text('Average-cost estimate'),trailing:Text(money.format(years[year]!),style:TextStyle(fontWeight:FontWeight.bold,color:years[year]!>=0?green:red))))),
+     const SizedBox(height:12),title('Holdings'),
+     ...holdings.values.map((h)=>Card(child:ListTile(title:Text(h.symbol),subtitle:Text('${h.quantity.toStringAsFixed(4)} shares • cost ${money.format(h.cost)}'),trailing:Text(money.format(h.pnl),style:TextStyle(color:h.pnl>=0?green:red,fontWeight:FontWeight.bold))))),
+     const Text('XIRR is an estimate based on dated buys, sells and current manually entered holding value. Realised P/L uses average cost, not tax-lot matching. Not tax advice.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
+   ]);
+ }
  Widget reportCard(String s,String v,IconData i,[Color c=blue])=>Card(child:ListTile(leading:Icon(i,color:c),title:Text(s),trailing:Text(v,style:TextStyle(color:c,fontWeight:FontWeight.bold))));
  Widget settingsPage()=>ListView(padding:const EdgeInsets.all(16),children:[title('Settings'),Card(child:ListTile(leading:const Icon(Icons.price_change,color:blue),title:const Text('Update current prices'),subtitle:const Text('Manually update prices for any active holding'),onTap:pricePicker)),Card(child:ListTile(leading:const Icon(Icons.upload_file,color:blue),title:const Text('Import CSV'),subtitle:const Text('Rows with duplicate transaction IDs are skipped'),onTap:importCsv)),Card(child:ListTile(leading:const Icon(Icons.download,color:blue),title:const Text('Export CSV backup'),onTap:exportCsv)),const Card(child:ListTile(leading:Icon(Icons.storage,color:blue),title:Text('Local storage'),subtitle:Text('Baskets, prices and trades are stored on this device. Export a backup before uninstalling.'))),const Padding(padding:EdgeInsets.all(12),child:Text('No broker connection or live prices. Verify calculations before tax or investment decisions.',style:TextStyle(color:Colors.blueGrey,fontSize:12)))]);
  Future<void> pricePicker()async{final symbols=all().keys.toList()..sort();if(symbols.isEmpty){toast('Add a buy transaction first.');return;}showModalBottomSheet(context:context,builder:(x)=>SafeArea(child:ListView(shrinkWrap:true,children:[const ListTile(title:Text('Select a holding to update price')),...symbols.map((s)=>ListTile(title:Text(s),subtitle:Text(money.format(prices[s]??0)),trailing:const Icon(Icons.edit),onTap:(){Navigator.pop(x);setPrice(s);} ))])));}

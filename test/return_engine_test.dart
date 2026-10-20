@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fundwise/return_engine.dart';
+import 'package:equity_basket/return_engine.dart';
 
 void main() {
   final start = DateTime(2026, 4, 1);

@@ -19,6 +19,31 @@ class Trade {
  factory Trade.fromJson(Map<String,dynamic> j)=>Trade(j['id'],j['basketId'],j['symbol'],j['side'],(j['qty'] as num).toDouble(),(j['price'] as num).toDouble(),(j['charges'] as num).toDouble(),DateTime.tryParse(j['date']??'')??DateTime.now());
 }
 class Holding { String symbol; double qty=0,cost=0,price=0; Holding(this.symbol); double get value=>qty*price; double get pnl=>value-cost; }
+List<Trade> chronologicalTrades(List<Trade> source) {
+  final indexed = source.asMap().entries.toList();
+  indexed.sort((a, b) {
+    final byDate = a.value.date.compareTo(b.value.date);
+    return byDate != 0 ? byDate : a.key.compareTo(b.key);
+  });
+  return indexed.map((entry) => entry.value).toList();
+}
+
+bool hasValidTransactionSequence(List<Trade> source) {
+  final quantities = <String, double>{};
+  for (final trade in chronologicalTrades(source)) {
+    if (trade.qty <= 0 || trade.price <= 0 ||
+        !['BUY', 'SELL'].contains(trade.side)) return false;
+    final key = '${trade.basketId}|${trade.symbol.toUpperCase().trim()}';
+    final held = quantities[key] ?? 0.0;
+    if (trade.side == 'BUY') {
+      quantities[key] = held + trade.qty;
+    } else {
+      if (trade.qty > held + 0.0000001) return false;
+      quantities[key] = held - trade.qty;
+    }
+  }
+  return true;
+}
 class EquityBasketApp extends StatelessWidget { const EquityBasketApp({super.key}); @override Widget build(BuildContext c)=>MaterialApp(title:'EquityBasket',debugShowCheckedModeBanner:false,theme:ThemeData(useMaterial3:true,colorScheme:ColorScheme.fromSeed(seedColor:blue),scaffoldBackgroundColor:const Color(0xFFF3F7FC),appBarTheme:const AppBarTheme(backgroundColor:navy,foregroundColor:Colors.white),inputDecorationTheme:InputDecorationTheme(border:OutlineInputBorder(borderRadius:BorderRadius.circular(12)))),home:const Home()); }
 
 class Home extends StatefulWidget { const Home({super.key}); @override State<Home> createState()=>_HomeState(); }
@@ -27,7 +52,7 @@ class _HomeState extends State<Home> {
  @override void initState(){super.initState();load();}
  Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
  Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);}
- List<Trade> byBasket(String id)=>trades.where((t)=>t.basketId==id).toList()..sort((a,b)=>a.date.compareTo(b.date));
+ List<Trade> byBasket(String id)=>chronologicalTrades(trades.where((t)=>t.basketId==id).toList());
  Map<String,Holding> holdings(String id){final m=<String,Holding>{};for(final t in byBasket(id)){final s=t.symbol.toUpperCase();final h=m.putIfAbsent(s,()=>Holding(s));if(t.side=='BUY'){h.qty+=t.qty;h.cost+=t.qty*t.price+t.charges;}else{final q=t.qty.clamp(0.0,h.qty);final avg=h.qty==0?0:h.cost/h.qty;h.qty-=q;h.cost-=avg*q;}}m.removeWhere((k,h)=>h.qty<=0.0000001);for(final h in m.values){h.price=prices[h.symbol]??(h.qty==0?0:h.cost/h.qty);}return m;}
  Map<String,Holding> all(){final m=<String,Holding>{};for(final b in baskets){for(final e in holdings(b.id).entries){final h=m.putIfAbsent(e.key,()=>Holding(e.key));h.qty+=e.value.qty;h.cost+=e.value.cost;h.price=prices[e.key]??e.value.price;}}return m;}
  double get invested=>all().values.fold(0,(s,h)=>s+h.cost); double get value=>all().values.fold(0,(s,h)=>s+h.value); double get pnl=>value-invested;
@@ -44,10 +69,17 @@ class _HomeState extends State<Home> {
  const SizedBox(height:8),TextFormField(controller:fee,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Charges (₹)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter valid charges':null),
  Row(children:[const Text('Trade date'),const Spacer(),TextButton(onPressed:()async{final d=await showDatePicker(context:x,initialDate:date,firstDate:DateTime(1990),lastDate:DateTime(2100));if(d!=null)ss(()=>date=d);},child:Text(dates.format(date)))])
 ]))),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>key.currentState!.validate()?Navigator.pop(x,true):null,child:const Text('Save'))])));
- if(ok!=true)return;final symbol=sym.text.trim().toUpperCase(),q=double.parse(qty.text),p=double.parse(price.text),f=double.parse(fee.text);
+ if(ok!=true)return;
+ final symbol=sym.text.trim().toUpperCase(),q=double.parse(qty.text),p=double.parse(price.text),f=double.parse(fee.text);
+ final original=List<Trade>.from(trades);
  if(old!=null)trades.removeWhere((t)=>t.id==old.id);
- if(side=='SELL'&&q>(holdings(bid)[symbol]?.qty??0)){toast('Sale exceeds the available quantity in this basket.');if(old!=null)trades.add(old);return;}
- trades.add(Trade(old?.id??DateTime.now().microsecondsSinceEpoch.toString(),bid,symbol,side,q,p,f,date));prices.putIfAbsent(symbol,()=>p);setState((){});save();
+ trades.add(Trade(old?.id??DateTime.now().microsecondsSinceEpoch.toString(),bid,symbol,side,q,p,f,date));
+ if(!hasValidTransactionSequence(trades)){
+   trades..clear()..addAll(original);
+   toast('This transaction would make shares held go negative on its trade date. Check the date, basket, and quantity.');
+   return;
+ }
+ prices.putIfAbsent(symbol,()=>p);setState((){});await save();
  }
  Future<void> setPrice(String s)async{final c=TextEditingController(text:(prices[s]??0).toString());final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:Text('Current price: '+s),content:TextField(controller:c,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Market price (₹)')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,double.tryParse(c.text)!=null&&double.parse(c.text)>=0),child:const Text('Save'))]));if(ok==true){prices[s]=double.parse(c.text);setState((){});save();}}
  Future<void> exportCsv()async{final rows=<List<dynamic>>[['Date','Basket','Type','Symbol','Quantity','Price','Charges','Transaction ID']];for(final t in trades){final b=baskets.where((b)=>b.id==t.basketId).firstOrNull;rows.add([t.date.toIso8601String(),b?.name??t.basketId,t.side,t.symbol,t.qty,t.price,t.charges,t.id]);}final text=const ListToCsvConverter().convert(rows);final path=await FilePicker.platform.saveFile(fileName:'equitybasket-ledger.csv',type:FileType.custom,allowedExtensions:['csv'],bytes:utf8.encode(text));if(mounted)toast(path==null?'Export cancelled':'CSV saved');}
@@ -64,7 +96,7 @@ class _HomeState extends State<Home> {
      const priceAliases=['price','trade price','average price','avg price','traded price'];
      const basketAliases=['basket','portfolio'];
      const chargeAliases=['charges','transaction charges','brokerage'];
-     const idAliases=['transaction id','trade id','trade_id','trade no','trade number','id','order id'];
+     const idAliases=['transaction id','trade id','trade_id','trade no','trade number','id'];
      bool hasAny(List<String> header,List<String> aliases)=>aliases.any(header.contains);
      var headerRow=-1;List<String> header=[];
      for(var i=0;i<rows.length&&i<15;i++){
@@ -108,7 +140,7 @@ class _HomeState extends State<Home> {
        prices.putIfAbsent(symbol,()=>unitPrice);
      }
      final accepted=<Trade>[],qtyByKey=<String,double>{};
-     final ordered=[...trades,...candidates]..sort((a,b)=>a.date.compareTo(b.date));
+     final ordered=chronologicalTrades([...trades,...candidates]);
      for(final trade in ordered){
        final key='${trade.basketId}|${trade.symbol}';final held=qtyByKey[key]??0.0;
        if(trade.side=='BUY'){qtyByKey[key]=held+trade.qty;if(candidates.contains(trade))accepted.add(trade);}
@@ -188,9 +220,9 @@ class _HomeState extends State<Home> {
     }
     final result = <String, double>{};
     for (final items in grouped.values) {
-      items.sort((a, b) => a.date.compareTo(b.date));
+      // chronologicalTrades preserves input order when date-only transactions tie.
       double quantity = 0, cost = 0;
-      for (final trade in items) {
+      for (final trade in chronologicalTrades(items)) {
         if (trade.side == 'BUY') { quantity += trade.qty; cost += trade.qty * trade.price + trade.charges; }
         else if (quantity > 0) {
           final sold = trade.qty.clamp(0.0, quantity);
@@ -237,9 +269,9 @@ class _HomeState extends State<Home> {
    for(final t in trades){grouped.putIfAbsent('${t.basketId}|${t.symbol.toUpperCase()}',()=>[]).add(t);}
    var stcg=0.0,ltcg=0.0;
    for(final entries in grouped.values){
-     entries.sort((a,b)=>a.date.compareTo(b.date));
+     // Stable ordering is important when a tradebook has date-only timestamps.
      final lots=<Map<String,dynamic>>[];
-     for(final t in entries){
+     for(final t in chronologicalTrades(entries)){
        if(t.side=='BUY'){lots.add({'qty':t.qty,'unitCost':t.price+(t.qty>0?t.charges/t.qty:0),'date':t.date});continue;}
        var toSell=t.qty;
        for(final lot in lots){

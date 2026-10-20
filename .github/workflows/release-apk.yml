@@ -21,6 +21,8 @@ jobs:
       - name: Generate Android scaffolding
         run: flutter create --platforms android --org com.shanuji .
       - run: flutter pub get
+      - name: Run tests
+        run: flutter test
       - name: Build APK
         run: flutter build apk --release
       - name: Publish APK to latest Release

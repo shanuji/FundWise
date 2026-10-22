@@ -22,7 +22,7 @@ jobs:
           channel: 'stable'
 
       - name: Generate Android Scaffolding
-        run: flutter create --platforms android --org com.shanuji .
+        run: flutter create --platforms android --org com.example --project-name fundwise .
 
       - name: Install Dependencies
         run: flutter pub get

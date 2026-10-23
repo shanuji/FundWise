@@ -36,6 +36,19 @@ class Trade {
  factory Trade.fromJson(Map<String,dynamic> j)=>Trade(j['id'],j['basketId'],j['symbol'],j['side'],(j['qty'] as num).toDouble(),(j['price'] as num).toDouble(),(j['charges'] as num).toDouble(),DateTime.tryParse(j['date']??'')??DateTime.now());
 }
 class Holding { String symbol; double qty=0,cost=0,price=0; Holding(this.symbol); double get value=>qty*price; double get pnl=>value-cost; }
+
+double _roundMoney(double value) => (value * 100).roundToDouble() / 100;
+Map<String, double> estimateDeliveryCharges(double qty, double price, String side) {
+  final turnover = math.max(0.0, qty) * math.max(0.0, price);
+  final sebi = _roundMoney(turnover * 10 / 10000000);
+  final exchange = _roundMoney(turnover * 0.0000307);
+  final stt = _roundMoney(turnover * 0.001);
+  final stamp = side == 'BUY' ? (turnover * 0.00015).roundToDouble() : 0.0;
+  const brokerage = 0.0;
+  final gst = _roundMoney((brokerage + exchange + sebi) * 0.18);
+  final total = _roundMoney(sebi + exchange + stt + stamp + gst + brokerage);
+  return {'SEBI fee':sebi,'Exchange fee':exchange,'STT':stt,'Stamp duty':stamp,'GST':gst,'Brokerage':brokerage,'Total':total};
+}
 List<Trade> chronologicalTrades(List<Trade> source) {
   final indexed = source.asMap().entries.toList();
   indexed.sort((a, b) {
@@ -65,10 +78,10 @@ class EquityBasketApp extends StatelessWidget { const EquityBasketApp({super.key
 
 class Home extends StatefulWidget { const Home({super.key}); @override State<Home> createState()=>_HomeState(); }
 class _HomeState extends State<Home> {
- int tab=0; bool ready=false; bool refreshingPrices=false; String? pricesUpdatedAt; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
+ int tab=0; bool ready=false; bool refreshingPrices=false; String? pricesUpdatedAt; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; Map<String,String> stockDirectory={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
  @override void initState(){super.initState();load();}
- Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;pricesUpdatedAt=p.getString('pricesUpdatedAt');}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
- Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);if(pricesUpdatedAt!=null)await p.setString('pricesUpdatedAt',pricesUpdatedAt!);}
+ Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stockDirectory=Map<String,String>.from((jsonDecode(p.getString('stockDirectory')??'{}') as Map).map((k,v)=>MapEntry(k.toString(),v.toString())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;pricesUpdatedAt=p.getString('pricesUpdatedAt');}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();}
+ Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setString('stockDirectory',jsonEncode(stockDirectory));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);if(pricesUpdatedAt!=null)await p.setString('pricesUpdatedAt',pricesUpdatedAt!);}
  List<Trade> byBasket(String id)=>chronologicalTrades(trades.where((t)=>t.basketId==id).toList());
  Map<String,Holding> holdings(String id){final m=<String,Holding>{};for(final t in byBasket(id)){final s=t.symbol.toUpperCase();final h=m.putIfAbsent(s,()=>Holding(s));if(t.side=='BUY'){h.qty+=t.qty;h.cost+=t.qty*t.price+t.charges;}else{final q=t.qty.clamp(0.0,h.qty);final avg=h.qty==0?0:h.cost/h.qty;h.qty-=q;h.cost-=avg*q;}}m.removeWhere((k,h)=>h.qty<=0.0000001);for(final h in m.values){h.price=prices[h.symbol]??(h.qty==0?0:h.cost/h.qty);}return m;}
  Map<String,Holding> all(){final m=<String,Holding>{};for(final b in baskets){for(final e in holdings(b.id).entries){final h=m.putIfAbsent(e.key,()=>Holding(e.key));h.qty+=e.value.qty;h.cost+=e.value.cost;h.price=prices[e.key]??e.value.price;}}return m;}
@@ -120,6 +133,10 @@ class _HomeState extends State<Home> {
              final rawSeries = row['series'];
              if (rawSymbol is! String || rawSeries is! String) continue;
              final symbol = rawSymbol.trim().toUpperCase();
+             if (rawSeries.trim().toUpperCase() == 'EQ') {
+               final rawName = row['name'];
+               stockDirectory[symbol] = rawName is String && rawName.trim().isNotEmpty ? rawName.trim() : symbol;
+             }
              if (rawSeries.trim().toUpperCase() != 'EQ' || !pending.contains(symbol)) continue;
 
              final rawClose = row['close'];
@@ -272,12 +289,12 @@ class _HomeState extends State<Home> {
      if(mounted)toast('Imported ${accepted.length}; skipped ${skipped} duplicate(s); rejected ${invalid} invalid/oversell row(s). CSV supports EquityBasket exports and common Zerodha tradebook columns; PDF contract notes are not supported yet.');
    }catch(e){if(mounted)toast('CSV import failed: $e');}
  }
- @override Widget build(BuildContext c){if(!ready)return const Scaffold(body:Center(child:CircularProgressIndicator()));final pages=[dashboard(),basketPage(),ledgerPage(),reportsPage(),settingsPage()];return Scaffold(appBar:AppBar(title:const Text('EquityBasket',style:TextStyle(fontWeight:FontWeight.bold)),actions:[IconButton(onPressed:()=>addTrade(),icon:const Icon(Icons.add_chart),tooltip:'Add transaction')]),body:pages[tab],floatingActionButton:tab==1?FloatingActionButton.extended(onPressed:addBasket,icon:const Icon(Icons.add),label:const Text('New basket')):tab==2?FloatingActionButton.extended(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Transaction')):null,bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const [NavigationDestination(icon:Icon(Icons.home_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]));}
+ @override Widget build(BuildContext c){if(!ready)return const Scaffold(body:Center(child:CircularProgressIndicator()));final pages=[dashboard(),basketPage(),ledgerPage(),reportsPage(),settingsPage()];return Scaffold(appBar:AppBar(title:const Text('EquityBasket',style:TextStyle(fontWeight:FontWeight.bold)),actions:[IconButton(onPressed:refreshingPrices?null:refreshPrices,icon:refreshingPrices?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2,color:Colors.white)):const Icon(Icons.refresh_rounded),tooltip:'Refresh EOD prices'),IconButton(onPressed:()=>addTrade(),icon:const Icon(Icons.add_chart),tooltip:'Add transaction')]),body:pages[tab],floatingActionButton:tab==1?FloatingActionButton.extended(onPressed:addBasket,icon:const Icon(Icons.add),label:const Text('New basket')):tab==2?FloatingActionButton.extended(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Transaction')):null,bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const [NavigationDestination(icon:Icon(Icons.home_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]));}
  Widget title(String s,{VoidCallback? onTap})=>Row(children:[Expanded(child:Text(s,style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold,color:navy))),if(onTap!=null)TextButton(onPressed:onTap,child:const Text('View all'))]);
  Widget metric(String s,String v)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(s,style:const TextStyle(color:Colors.white70,fontSize:12)),const SizedBox(height:5),Text(v,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w600))]));
  Widget dashboard()=>ListView(padding:const EdgeInsets.all(16),children:[
    Container(padding:const EdgeInsets.all(22),decoration:BoxDecoration(gradient:const LinearGradient(colors:[navy,Color(0xFF0678B8)]),borderRadius:BorderRadius.circular(24)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    const Text('TOTAL PORTFOLIO VALUE',style:TextStyle(color:Colors.white70,letterSpacing:1)),const SizedBox(height:10),
+    Row(children:[const Expanded(child:Text('TOTAL PORTFOLIO VALUE',style:TextStyle(color:Colors.white70,letterSpacing:1))),IconButton(onPressed:refreshingPrices?null:refreshPrices,color:Colors.white,tooltip:'Refresh all prices',icon:refreshingPrices?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2,color:Colors.white)):const Icon(Icons.refresh_rounded))]),const SizedBox(height:2),
     Text(money.format(value),style:const TextStyle(color:Colors.white,fontSize:30,fontWeight:FontWeight.bold)),const SizedBox(height:8),
     Text((pnl>=0?'▲ +':'▼ ')+money.format(pnl)+' • '+(invested>0?(pnl/invested*100).toStringAsFixed(2)+'%':'—'),style:TextStyle(color:pnl>=0?const Color(0xFF48F6A8):const Color(0xFFFFAAAA))),const SizedBox(height:20),
     Row(children:[metric('Invested',money.format(invested)),metric('Unrealised P/L',money.format(pnl))]),

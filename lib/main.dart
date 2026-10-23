@@ -164,6 +164,37 @@ class _HomeState extends State<Home> {
    );
  }
 
+ Future<void> loadStockDirectory() async {
+   if (stockDirectory.isNotEmpty) return;
+   var date = DateTime.now();
+   for (var attempt = 0; attempt < 10; attempt++) {
+     final uri = Uri.https('api.tejhq.dev', '/v1/snapshot/nse', {'date':DateFormat('yyyy-MM-dd').format(date)});
+     try {
+       final response = await http.get(uri, headers: const {'Accept':'application/json'}).timeout(const Duration(seconds:12));
+       if (response.statusCode == 200) {
+         final decoded = jsonDecode(response.body);
+         final rows = decoded is Map ? decoded['data'] : null;
+         if (rows is List && rows.isNotEmpty) {
+           for (final row in rows) {
+             if (row is! Map || row['symbol'] is! String || row['series'] is! String) continue;
+             if ((row['series'] as String).trim().toUpperCase() != 'EQ') continue;
+             final symbol = (row['symbol'] as String).trim().toUpperCase();
+             final rawName = row['name'];
+             if (symbol.isNotEmpty) stockDirectory[symbol] = rawName is String && rawName.trim().isNotEmpty ? rawName.trim() : symbol;
+           }
+           if (mounted) setState(() {});
+           await save();
+           return;
+         }
+       } else if (response.statusCode != 404 && response.statusCode != 400) {
+         return;
+       }
+     } catch (_) {
+       return;
+     }
+     date = date.subtract(const Duration(days:1));
+   }
+ }
  Future<void> refreshPrices() async {
    if (refreshingPrices) return;
    final symbols = all().keys.map((s) => s.trim().toUpperCase()).where((s) => s.isNotEmpty).toSet();
@@ -201,7 +232,7 @@ class _HomeState extends State<Home> {
  final ok=await showDialog<bool>(context:context,builder:(x)=>StatefulBuilder(builder:(x,ss)=>AlertDialog(title:Text(old==null?'Record transaction':'Edit transaction'),content:SingleChildScrollView(child:Form(key:key,child:Column(mainAxisSize:MainAxisSize.min,children:[
  DropdownButtonFormField<String>(value:bid,decoration:const InputDecoration(labelText:'Basket'),items:baskets.map((b)=>DropdownMenuItem(value:b.id,child:Text(b.name))).toList(),onChanged:(v)=>ss(()=>bid=v??bid)),
  const SizedBox(height:8),DropdownButtonFormField<String>(value:side,decoration:const InputDecoration(labelText:'Type'),items:const [DropdownMenuItem(value:'BUY',child:Text('Buy')),DropdownMenuItem(value:'SELL',child:Text('Sell'))],onChanged:(v)=>ss(()=>{side=v??side,fee.text=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side)['Total']!.toStringAsFixed(2)})),
- const SizedBox(height:8),Autocomplete<String>(initialValue:TextEditingValue(text:symbolInput),optionsBuilder:(value){final q=value.text.trim().toUpperCase();symbolInput=value.text;if(q.isEmpty)return const Iterable<String>.empty();final found=stockDirectory.entries.where((e)=>e.key.contains(q)||e.value.toUpperCase().contains(q)).take(8).map((e)=>e.key);const common=['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','ITC','SBIN','BHARTIARTL','LT','TATAMOTORS','TATASTEEL','ADANIENT','ADANIGREEN','NIFTYBEES'];return {...found,...common.where((s)=>s.contains(q))}.take(8);},displayStringForOption:(s)=>s,onSelected:(s){symbolInput=s;},optionsViewBuilder:(context,onSelected,options)=>Align(alignment:Alignment.topLeft,child:Material(elevation:6,borderRadius:BorderRadius.circular(12),child:ConstrainedBox(constraints:const BoxConstraints(maxHeight:250),child:ListView(shrinkWrap:true,padding:EdgeInsets.zero,children:options.map((s)=>ListTile(dense:true,leading:const Icon(Icons.show_chart,color:blue),title:Text(s),subtitle:Text(stockDirectory[s]??'NSE equity'),onTap:()=>onSelected(s))).toList())))),fieldViewBuilder:(context,controller,focusNode,onFieldSubmitted){controller.addListener(()=>symbolInput=controller.text);return TextFormField(controller:controller,focusNode:focusNode,onFieldSubmitted:(_)=>onFieldSubmitted(),decoration:const InputDecoration(labelText:'Stock ticker',hintText:'Search symbol or company name',prefixIcon:Icon(Icons.search)),validator:(v)=>v==null||v.trim().isEmpty?'Required':null);}),
+ const SizedBox(height:8),Autocomplete<String>(initialValue:TextEditingValue(text:symbolInput),optionsBuilder:(value){final q=value.text.trim().toUpperCase();symbolInput=value.text;if(q.isEmpty)return const Iterable<String>.empty();final found=stockDirectory.entries.where((e)=>e.key.contains(q)||e.value.toUpperCase().contains(q)).take(8).map((e)=>e.key);const common=['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','ITC','SBIN','BHARTIARTL','LT','TATAMOTORS','TATASTEEL','ADANIENT','ADANIGREEN','NIFTYBEES'];return {...found,...common.where((s)=>s.contains(q))}.take(8);},displayStringForOption:(s)=>s,onSelected:(s){symbolInput=s;},optionsViewBuilder:(context,onSelected,options)=>Align(alignment:Alignment.topLeft,child:Material(elevation:6,borderRadius:BorderRadius.circular(12),child:ConstrainedBox(constraints:const BoxConstraints(maxHeight:250),child:ListView(shrinkWrap:true,padding:EdgeInsets.zero,children:options.map((s)=>ListTile(dense:true,leading:const Icon(Icons.show_chart,color:blue),title:Text(s),subtitle:Text(stockDirectory[s]??'NSE equity'),onTap:()=>onSelected(s))).toList())))),fieldViewBuilder:(context,controller,focusNode,onFieldSubmitted){controller.addListener(()=>symbolInput=controller.text);return TextFormField(controller:controller,focusNode:focusNode,onTap:()=>loadStockDirectory(),onFieldSubmitted:(_)=>onFieldSubmitted(),decoration:const InputDecoration(labelText:'Stock ticker',hintText:'Search symbol or company name',prefixIcon:Icon(Icons.search)),validator:(v)=>v==null||v.trim().isEmpty?'Required':null);}),
  const SizedBox(height:8),TextFormField(controller:qty,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Quantity'),onChanged:(_)=>ss(()=>fee.text=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side)['Total']!.toStringAsFixed(2)),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<=0?'Enter quantity above zero':null),
  const SizedBox(height:8),TextFormField(controller:price,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Price per share (₹)'),onChanged:(_)=>ss(()=>fee.text=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side)['Total']!.toStringAsFixed(2)),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<=0?'Enter price above zero':null),
  const SizedBox(height:8),TextFormField(controller:fee,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Estimated charges (₹) • editable'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter valid charges':null),Builder(builder:(context){final breakdown=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side);return Container(margin:const EdgeInsets.only(top:8),padding:const EdgeInsets.all(10),decoration:BoxDecoration(color:const Color(0xFFEAF2FF),borderRadius:BorderRadius.circular(12)),child:Column(children:[const Align(alignment:Alignment.centerLeft,child:Text('Estimated NSE equity-delivery charges',style:TextStyle(fontWeight:FontWeight.bold,fontSize:12,color:navy))),const SizedBox(height:5),...breakdown.entries.where((e)=>e.key!='Total').map((e)=>Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Row(children:[Expanded(child:Text(e.key,style:const TextStyle(fontSize:12,color:navy))),Text(money.format(e.value),style:const TextStyle(fontSize:12,color:navy))]))),const Divider(height:10),Row(children:[const Expanded(child:Text('Total estimated charges',style:TextStyle(fontWeight:FontWeight.bold,color:navy))),Text(money.format(breakdown['Total']!),style:const TextStyle(fontWeight:FontWeight.bold,color:navy))]),const Text('Approximate rates; confirm against your broker contract note.',style:TextStyle(fontSize:10,color:Colors.blueGrey))]));}),

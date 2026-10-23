@@ -197,18 +197,18 @@ class _HomeState extends State<Home> {
  }
  Future<void> addBasket()async{final c=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:const Text('New basket'),content:TextField(controller:c,autofocus:true,decoration:const InputDecoration(labelText:'Basket name')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,c.text.trim().isNotEmpty),child:const Text('Create'))]));if(ok==true){baskets.add(Basket(DateTime.now().microsecondsSinceEpoch.toString(),c.text.trim()));setState((){});save();}}
  Future<void> addTrade({Trade? old})async{
- final sym=TextEditingController(text:old?.symbol??''),qty=TextEditingController(text:old?.qty.toString()??''),price=TextEditingController(text:old?.price.toString()??''),fee=TextEditingController(text:old?.charges.toString()??defaultCharges.toString());String bid=old?.basketId??baskets.first.id,side=old?.side??'BUY';DateTime date=old?.date??DateTime.now();final key=GlobalKey<FormState>();
+ final qty=TextEditingController(text:old?.qty.toString()??''),price=TextEditingController(text:old?.price.toString()??''),fee=TextEditingController(text:old?.charges.toString()??defaultCharges.toString());String symbolInput=old?.symbol??'',bid=old?.basketId??baskets.first.id,side=old?.side??'BUY';DateTime date=old?.date??DateTime.now();final key=GlobalKey<FormState>();
  final ok=await showDialog<bool>(context:context,builder:(x)=>StatefulBuilder(builder:(x,ss)=>AlertDialog(title:Text(old==null?'Record transaction':'Edit transaction'),content:SingleChildScrollView(child:Form(key:key,child:Column(mainAxisSize:MainAxisSize.min,children:[
  DropdownButtonFormField<String>(value:bid,decoration:const InputDecoration(labelText:'Basket'),items:baskets.map((b)=>DropdownMenuItem(value:b.id,child:Text(b.name))).toList(),onChanged:(v)=>ss(()=>bid=v??bid)),
- const SizedBox(height:8),DropdownButtonFormField<String>(value:side,decoration:const InputDecoration(labelText:'Type'),items:const [DropdownMenuItem(value:'BUY',child:Text('Buy')),DropdownMenuItem(value:'SELL',child:Text('Sell'))],onChanged:(v)=>ss(()=>side=v??side)),
- const SizedBox(height:8),TextFormField(controller:sym,decoration:const InputDecoration(labelText:'Stock symbol'),validator:(v)=>v==null||v.trim().isEmpty?'Required':null),
- const SizedBox(height:8),TextFormField(controller:qty,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Quantity'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<=0?'Enter quantity above zero':null),
- const SizedBox(height:8),TextFormField(controller:price,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Price per share (₹)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<=0?'Enter price above zero':null),
- const SizedBox(height:8),TextFormField(controller:fee,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Charges (₹)'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter valid charges':null),
+ const SizedBox(height:8),DropdownButtonFormField<String>(value:side,decoration:const InputDecoration(labelText:'Type'),items:const [DropdownMenuItem(value:'BUY',child:Text('Buy')),DropdownMenuItem(value:'SELL',child:Text('Sell'))],onChanged:(v)=>ss(()=>{side=v??side,fee.text=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side)['Total']!.toStringAsFixed(2)})),
+ const SizedBox(height:8),Autocomplete<String>(initialValue:TextEditingValue(text:symbolInput),optionsBuilder:(value){final q=value.text.trim().toUpperCase();symbolInput=value.text;if(q.isEmpty)return const Iterable<String>.empty();final found=stockDirectory.entries.where((e)=>e.key.contains(q)||e.value.toUpperCase().contains(q)).take(8).map((e)=>e.key);const common=['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','ITC','SBIN','BHARTIARTL','LT','TATAMOTORS','TATASTEEL','ADANIENT','ADANIGREEN','NIFTYBEES'];return {...found,...common.where((s)=>s.contains(q))}.take(8);},displayStringForOption:(s)=>s,onSelected:(s){symbolInput=s;},optionsViewBuilder:(context,onSelected,options)=>Align(alignment:Alignment.topLeft,child:Material(elevation:6,borderRadius:BorderRadius.circular(12),child:ConstrainedBox(constraints:const BoxConstraints(maxHeight:250),child:ListView(shrinkWrap:true,padding:EdgeInsets.zero,children:options.map((s)=>ListTile(dense:true,leading:const Icon(Icons.show_chart,color:blue),title:Text(s),subtitle:Text(stockDirectory[s]??'NSE equity'),onTap:()=>onSelected(s))).toList())))),fieldViewBuilder:(context,controller,focusNode,onFieldSubmitted){controller.addListener(()=>symbolInput=controller.text);return TextFormField(controller:controller,focusNode:focusNode,onFieldSubmitted:(_)=>onFieldSubmitted(),decoration:const InputDecoration(labelText:'Stock ticker',hintText:'Search symbol or company name',prefixIcon:Icon(Icons.search)),validator:(v)=>v==null||v.trim().isEmpty?'Required':null);}),
+ const SizedBox(height:8),TextFormField(controller:qty,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Quantity'),onChanged:(_)=>ss(()=>fee.text=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side)['Total']!.toStringAsFixed(2)),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<=0?'Enter quantity above zero':null),
+ const SizedBox(height:8),TextFormField(controller:price,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Price per share (₹)'),onChanged:(_)=>ss(()=>fee.text=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side)['Total']!.toStringAsFixed(2)),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<=0?'Enter price above zero':null),
+ const SizedBox(height:8),TextFormField(controller:fee,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Estimated charges (₹) • editable'),validator:(v)=>double.tryParse(v??'')==null||double.parse(v!)<0?'Enter valid charges':null),Builder(builder:(context){final breakdown=estimateDeliveryCharges(double.tryParse(qty.text)??0,double.tryParse(price.text)??0,side);return Container(margin:const EdgeInsets.only(top:8),padding:const EdgeInsets.all(10),decoration:BoxDecoration(color:const Color(0xFFEAF2FF),borderRadius:BorderRadius.circular(12)),child:Column(children:[const Align(alignment:Alignment.centerLeft,child:Text('Estimated NSE equity-delivery charges',style:TextStyle(fontWeight:FontWeight.bold,fontSize:12,color:navy))),const SizedBox(height:5),...breakdown.entries.where((e)=>e.key!='Total').map((e)=>Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Row(children:[Expanded(child:Text(e.key,style:const TextStyle(fontSize:12,color:navy))),Text(money.format(e.value),style:const TextStyle(fontSize:12,color:navy))]))),const Divider(height:10),Row(children:[const Expanded(child:Text('Total estimated charges',style:TextStyle(fontWeight:FontWeight.bold,color:navy))),Text(money.format(breakdown['Total']!),style:const TextStyle(fontWeight:FontWeight.bold,color:navy))]),const Text('Approximate rates; confirm against your broker contract note.',style:TextStyle(fontSize:10,color:Colors.blueGrey))]));}),
  Row(children:[const Text('Trade date'),const Spacer(),TextButton(onPressed:()async{final d=await showDatePicker(context:x,initialDate:date,firstDate:DateTime(1990),lastDate:DateTime(2100));if(d!=null)ss(()=>date=d);},child:Text(dates.format(date)))])
 ]))),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>key.currentState!.validate()?Navigator.pop(x,true):null,child:const Text('Save'))])));
  if(ok!=true)return;
- final symbol=sym.text.trim().toUpperCase(),q=double.parse(qty.text),p=double.parse(price.text),f=double.parse(fee.text);
+ final symbol=symbolInput.trim().toUpperCase(),q=double.parse(qty.text),p=double.parse(price.text),f=double.parse(fee.text);
  final original=List<Trade>.from(trades);
  if(old!=null)trades.removeWhere((t)=>t.id==old.id);
  trades.add(Trade(old?.id??DateTime.now().microsecondsSinceEpoch.toString(),bid,symbol,side,q,p,f,date));
@@ -309,21 +309,33 @@ class _HomeState extends State<Home> {
    const SizedBox(height:14),const Text('Free refresh uses end-of-day NSE/BSE data; it is not intraday live pricing. Manual price entry remains available.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
  ]);
  Widget action(IconData i,String s,VoidCallback f)=>Card(child:InkWell(onTap:f,borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.all(12),child:Column(children:[Icon(i,color:blue),const SizedBox(height:6),Text(s,style:const TextStyle(fontSize:12))]))));
- Widget basketPage()=>ListView(padding:const EdgeInsets.all(16),children:[title('All baskets'),...baskets.map((b){
-  final h=holdings(b.id);final i=h.values.fold(0.0,(s,x)=>s+x.cost),v=h.values.fold(0.0,(s,x)=>s+x.value);
-  return Card(child:ExpansionTile(title:Text(b.name,style:const TextStyle(fontWeight:FontWeight.bold)),subtitle:Text('${h.length} active holdings • ${byBasket(b.id).length} trades'),leading:const Icon(Icons.account_balance_wallet,color:blue),children:[
-    Padding(padding:const EdgeInsets.all(12),child:Column(children:[
-      Text('Value ${money.format(v)}   P/L ${money.format(v-i)}'),
-      if(h.isEmpty) const ListTile(title:Text('No active holdings yet')),
-      ...h.values.map((x)=>ListTile(dense:true,title:Text(x.symbol),subtitle:Text('${x.qty.toStringAsFixed(4)} shares • avg cost ${money.format(x.qty>0?x.cost/x.qty:0)}'),trailing:Text(money.format(x.value)))),
-      Wrap(spacing:8,children:[
-        FilledButton.tonal(onPressed:()=>addTrade(),child:const Text('Add trade')),
-        TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),
-        if(baskets.length>1) TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete')),
-      ]),
-    ]))
-   ]));
- }),]);
+ Widget basketPage()=>ListView(padding:const EdgeInsets.all(16),children:[
+  title('All baskets'),
+  const Padding(padding:EdgeInsets.only(bottom:10),child:Text('Each folder tracks its own holdings, current value and profit/loss.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
+  ...baskets.map((b){
+    final h=holdings(b.id);final investedValue=h.values.fold(0.0,(s,x)=>s+x.cost),currentValue=h.values.fold(0.0,(s,x)=>s+x.value),profit=currentValue-investedValue;
+    return Card(clipBehavior:Clip.antiAlias,elevation:2,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:ExpansionTile(
+      tilePadding:const EdgeInsets.fromLTRB(16,12,16,12),
+      leading:Container(width:48,height:48,decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF0878FF),Color(0xFF19B8C7)]),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.folder_rounded,color:Colors.white,size:27)),
+      title:Text(b.name,style:const TextStyle(fontWeight:FontWeight.bold,fontSize:17,color:navy)),
+      subtitle:Padding(padding:const EdgeInsets.only(top:4),child:Text('${h.length} shares • ${byBasket(b.id).length} trades',style:const TextStyle(color:Colors.blueGrey))),
+      children:[
+        Padding(padding:const EdgeInsets.fromLTRB(16,0,16,16),child:Column(children:[
+          const Divider(),
+          Row(children:[
+            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:10,letterSpacing:.7,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(currentValue),style:const TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:navy))])),
+            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('UNREALISED P/L',style:TextStyle(fontSize:10,letterSpacing:.7,color:Colors.blueGrey)),const SizedBox(height:4),Text('${profit>=0?'+':''}${money.format(profit)}',style:TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:profit>=0?green:red))])),
+            Text(investedValue>0?'${(profit/investedValue*100).toStringAsFixed(1)}%':'—',style:TextStyle(fontWeight:FontWeight.bold,color:profit>=0?green:red)),
+          ]),
+          const SizedBox(height:8),
+          if(h.isEmpty)const ListTile(dense:true,title:Text('No active shares yet. Add a buy transaction to get started.')),
+          ...h.values.map((x)=>ListTile(dense:true,contentPadding:EdgeInsets.zero,title:Text(x.symbol,style:const TextStyle(fontWeight:FontWeight.w600)),subtitle:Text('${x.qty.toStringAsFixed(4)} shares • avg cost ${money.format(x.qty>0?x.cost/x.qty:0)}'),trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:[Text(money.format(x.value),style:const TextStyle(fontWeight:FontWeight.bold)),Text('${x.pnl>=0?'+':''}${money.format(x.pnl)}',style:TextStyle(fontSize:12,color:x.pnl>=0?green:red))]))),
+          Wrap(spacing:8,children:[FilledButton.tonal(onPressed:()=>addTrade(),child:const Text('Add trade')),TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),if(baskets.length>1)TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete'))]),
+        ]))
+      ],
+    ));
+  }),
+]);
  Widget ledgerPage(){final list=trades.toList()..sort((a,b)=>b.date.compareTo(a.date));return ListView(padding:const EdgeInsets.all(16),children:[
   Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importCsv,icon:const Icon(Icons.upload_file)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
   if(list.isEmpty)const Padding(padding:EdgeInsets.all(28),child:Text('No transactions yet. Add your first buy or sell.')),

@@ -30,7 +30,7 @@ jobs:
           cache: true
 
       - name: Generate Android scaffolding
-        run: flutter create --platforms android --org com.shanuji .
+        run: flutter create --platforms android --org com.example --project-name fundwise .
 
       - name: Install dependencies
         run: flutter pub get

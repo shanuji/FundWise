@@ -78,7 +78,7 @@ class EquityBasketApp extends StatelessWidget { const EquityBasketApp({super.key
 
 class Home extends StatefulWidget { const Home({super.key}); @override State<Home> createState()=>_HomeState(); }
 class _HomeState extends State<Home> {
- int tab=0; bool ready=false; bool refreshingPrices=false; String? pricesUpdatedAt; DateTime reportStart=DateTime(DateTime.now().year-1,DateTime.now().month,DateTime.now().day); DateTime reportEnd=DateTime.now(); String dashboardPeriod='Day'; bool periodLoading=false; Map<String,dynamic>? dashboardPeriodData; Map<String,dynamic>? reportPeriodData; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; Map<String,String> stockDirectory={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
+ int tab=0; bool ready=false; bool refreshingPrices=false; String? pricesUpdatedAt; DateTime reportStart=DateTime(DateTime.now().year-1,DateTime.now().month,DateTime.now().day); DateTime reportEnd=DateTime.now(); String dashboardPeriod='Day'; bool periodLoading=false; Map<String,dynamic>? dashboardPeriodData; Map<String,dynamic>? reportPeriodData; String? selectedBasketId; List<Basket> baskets=[]; List<Trade> trades=[]; Map<String,double> prices={}; Map<String,String> stockDirectory={}; double stcgRate=20.0,ltcgRate=12.5,ltcgExemption=125000.0,cessRate=4.0,defaultCharges=0.0;
  @override void initState(){super.initState();load();}
  Future<void> load()async{final p=await SharedPreferences.getInstance();try{baskets=(jsonDecode(p.getString('baskets')??'[]') as List).map((e)=>Basket.fromJson(Map<String,dynamic>.from(e))).toList();trades=(jsonDecode(p.getString('trades')??'[]') as List).map((e)=>Trade.fromJson(Map<String,dynamic>.from(e))).toList();prices=Map<String,double>.from((jsonDecode(p.getString('prices')??'{}') as Map).map((k,v)=>MapEntry(k,(v as num).toDouble())));stockDirectory=Map<String,String>.from((jsonDecode(p.getString('stockDirectory')??'{}') as Map).map((k,v)=>MapEntry(k.toString(),v.toString())));stcgRate=p.getDouble('stcgRate')??20.0;ltcgRate=p.getDouble('ltcgRate')??12.5;ltcgExemption=p.getDouble('ltcgExemption')??125000.0;cessRate=p.getDouble('cessRate')??4.0;defaultCharges=p.getDouble('defaultCharges')??0.0;pricesUpdatedAt=p.getString('pricesUpdatedAt');}catch(_){baskets=[];trades=[];prices={};}if(baskets.isEmpty)baskets=[Basket('core','Core Portfolio')];if(mounted)setState(()=>ready=true);save();loadDashboardPeriod('Day');}
  Future<void> save()async{final p=await SharedPreferences.getInstance();await p.setString('baskets',jsonEncode(baskets.map((e)=>e.toJson()).toList()));await p.setString('trades',jsonEncode(trades.map((e)=>e.toJson()).toList()));await p.setString('prices',jsonEncode(prices));await p.setString('stockDirectory',jsonEncode(stockDirectory));await p.setDouble('stcgRate',stcgRate);await p.setDouble('ltcgRate',ltcgRate);await p.setDouble('ltcgExemption',ltcgExemption);await p.setDouble('cessRate',cessRate);await p.setDouble('defaultCharges',defaultCharges);if(pricesUpdatedAt!=null)await p.setString('pricesUpdatedAt',pricesUpdatedAt!);}
@@ -273,7 +273,13 @@ class _HomeState extends State<Home> {
  }
  Future<void> setPrice(String s)async{final c=TextEditingController(text:(prices[s]??0).toString());final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:Text('Current price: '+s),content:TextField(controller:c,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Market price (₹)')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,double.tryParse(c.text)!=null&&double.parse(c.text)>=0),child:const Text('Save'))]));if(ok==true){prices[s]=double.parse(c.text);setState((){});save();}}
  Future<void> exportCsv()async{final rows=<List<dynamic>>[['Date','Basket','Type','Symbol','Quantity','Price','Charges','Transaction ID']];for(final t in trades){final b=baskets.where((b)=>b.id==t.basketId).firstOrNull;rows.add([t.date.toIso8601String(),b?.name??t.basketId,t.side,t.symbol,t.qty,t.price,t.charges,t.id]);}final text=const ListToCsvConverter().convert(rows);final path=await FilePicker.platform.saveFile(fileName:'equitybasket-ledger.csv',type:FileType.custom,allowedExtensions:['csv'],bytes:utf8.encode(text));if(mounted)toast(path==null?'Export cancelled':'CSV saved');}
- Future<void> importCsv() async {
+ Future<void> importCsv([String? requestedBasketId]) async {
+   if(baskets.isEmpty){if(mounted)toast('Create a basket before importing transactions.');return;}
+   Basket? destination;
+   if(requestedBasketId!=null){destination=baskets.where((b)=>b.id==requestedBasketId).firstOrNull;}
+   else if(baskets.length==1){destination=baskets.first;}
+   else {destination=await showDialog<Basket>(context:context,builder:(ctx){String? chosen=baskets.first.id;return StatefulBuilder(builder:(ctx,setDialog)=>AlertDialog(title:const Text('Import into basket'),content:DropdownButtonFormField<String>(value:chosen,decoration:const InputDecoration(labelText:'Destination basket'),items:baskets.map((b)=>DropdownMenuItem(value:b.id,child:Text(b.name))).toList(),onChanged:(v)=>setDialog(()=>chosen=v)),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,baskets.where((b)=>b.id==chosen).firstOrNull),child:const Text('Choose basket'))]));});}
+   if(destination==null)return;
    final picked=await FilePicker.platform.pickFiles(type:FileType.custom,allowedExtensions:['csv'],withData:true);
    if(picked==null||picked.files.single.bytes==null)return;
    try {
@@ -318,13 +324,12 @@ class _HomeState extends State<Home> {
        final when=parseDate(field(row,dateCol));
        if(symbol.isEmpty||!['BUY','SELL'].contains(side)||quantity==null||quantity<=0||unitPrice==null||unitPrice<=0||charges<0||when==null){invalid++;continue;}
        final txId=field(row,idCol);
-       final basketNameRaw=field(row,basketCol);final basketName=basketNameRaw.isEmpty?defaultBasketName:basketNameRaw;
+       final basketName=destination.name;
        final fingerprint='${when.toIso8601String()}|${basketName.toLowerCase()}|$side|$symbol|$quantity|$unitPrice';
        if(txId.isNotEmpty&&(trades.any((t)=>t.id==txId)||!seenIds.add(txId))){skipped++;continue;}
        if(txId.isEmpty&&(seenFingerprints.contains(fingerprint)||trades.any((t){final b=baskets.where((b)=>b.id==t.basketId);return b.isNotEmpty&&b.first.name.toLowerCase()==basketName.toLowerCase()&&t.date==when&&t.side==side&&t.symbol==symbol&&t.qty==quantity&&t.price==unitPrice;}))){skipped++;continue;}
        seenFingerprints.add(fingerprint);
-       var basket=baskets.where((b)=>b.name.toLowerCase()==basketName.toLowerCase()).firstOrNull;
-       if(basket==null){basket=Basket(DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString(),basketName);baskets.add(basket);}
+       final basket=destination;
        final id=txId.isEmpty?DateTime.now().microsecondsSinceEpoch.toString()+candidates.length.toString():txId;
        candidates.add(Trade(id,basket.id,symbol,side,quantity,unitPrice,charges,when));
        prices.putIfAbsent(symbol,()=>unitPrice);
@@ -372,33 +377,38 @@ class _HomeState extends State<Home> {
    const SizedBox(height:14),const Text('Free refresh uses end-of-day NSE/BSE data; it is not intraday live pricing. Manual price entry remains available.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
  ]);
  Widget action(IconData i,String s,VoidCallback f)=>Card(child:InkWell(onTap:f,borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.all(12),child:Column(children:[Icon(i,color:blue),const SizedBox(height:6),Text(s,style:const TextStyle(fontSize:12))]))));
- Widget basketPage()=>ListView(padding:const EdgeInsets.all(16),children:[
-  title('All baskets'),
-  const Padding(padding:EdgeInsets.only(bottom:10),child:Text('Each folder tracks its own holdings, current value and profit/loss.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
-  ...baskets.map((b){
-    final h=holdings(b.id);final investedValue=h.values.fold(0.0,(s,x)=>s+x.cost),currentValue=h.values.fold(0.0,(s,x)=>s+x.value),profit=currentValue-investedValue;
-    return Card(clipBehavior:Clip.antiAlias,elevation:2,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:ExpansionTile(
-      tilePadding:const EdgeInsets.fromLTRB(16,12,16,12),
-      leading:Container(width:48,height:48,decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF0878FF),Color(0xFF19B8C7)]),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.folder_rounded,color:Colors.white,size:27)),
-      title:Text(b.name,style:const TextStyle(fontWeight:FontWeight.bold,fontSize:17,color:navy)),
-      subtitle:Padding(padding:const EdgeInsets.only(top:4),child:Text('${h.length} shares • ${byBasket(b.id).length} trades',style:const TextStyle(color:Colors.blueGrey))),
-      children:[
-        Padding(padding:const EdgeInsets.fromLTRB(16,0,16,16),child:Column(children:[
-          const Divider(),
-          Row(children:[
-            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:10,letterSpacing:.7,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(currentValue),style:const TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:navy))])),
-            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('UNREALISED P/L',style:TextStyle(fontSize:10,letterSpacing:.7,color:Colors.blueGrey)),const SizedBox(height:4),Text('${profit>=0?'+':''}${money.format(profit)}',style:TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:profit>=0?green:red))])),
-            Text(investedValue>0?'${(profit/investedValue*100).toStringAsFixed(1)}%':'—',style:TextStyle(fontWeight:FontWeight.bold,color:profit>=0?green:red)),
-          ]),
-          const SizedBox(height:8),
-          if(h.isEmpty)const ListTile(dense:true,title:Text('No active shares yet. Add a buy transaction to get started.')),
-          ...h.values.map((x)=>ListTile(dense:true,contentPadding:EdgeInsets.zero,title:Text(x.symbol,style:const TextStyle(fontWeight:FontWeight.w600)),subtitle:Text('${x.qty.toStringAsFixed(4)} shares • avg cost ${money.format(x.qty>0?x.cost/x.qty:0)}'),trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:[Text(money.format(x.value),style:const TextStyle(fontWeight:FontWeight.bold)),Text('${x.pnl>=0?'+':''}${money.format(x.pnl)}',style:TextStyle(fontSize:12,color:x.pnl>=0?green:red))]))),
-          Wrap(spacing:8,children:[FilledButton.tonal(onPressed:()=>addTrade(),child:const Text('Add trade')),TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),if(baskets.length>1)TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete'))]),
-        ]))
-      ],
-    ));
-  }),
-]);
+ Widget basketPage(){
+   final selected=baskets.where((b)=>b.id==selectedBasketId).firstOrNull;
+   if(selected!=null){
+     final h=holdings(selected.id);final invested=h.values.fold(0.0,(s,x)=>s+x.cost),value=h.values.fold(0.0,(s,x)=>s+x.value),pnl=value-invested;
+     return ListView(padding:const EdgeInsets.all(16),children:[
+       Row(children:[IconButton(onPressed:()=>setState(()=>selectedBasketId=null),icon:const Icon(Icons.arrow_back)),Expanded(child:Text(selected.name,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold,color:navy))),IconButton(onPressed:()=>importCsv(selected.id),tooltip:'Import CSV into this basket',icon:const Icon(Icons.upload_file)),PopupMenuButton<String>(onSelected:(v){if(v=='rename')renameBasket(selected);if(v=='delete')deleteBasket(selected);},itemBuilder:(_)=>[const PopupMenuItem(value:'rename',child:Text('Rename')),if(baskets.length>1)const PopupMenuItem(value:'delete',child:Text('Delete'))])]),
+       Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+         Text('${h.length} active shares • ${byBasket(selected.id).length} trades',style:const TextStyle(color:Colors.blueGrey)),const SizedBox(height:16),
+         Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:11,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(value),style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold,color:navy))])),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('INVESTED VALUE',style:TextStyle(fontSize:11,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(invested),style:const TextStyle(fontSize:16,fontWeight:FontWeight.w600,color:navy))]))]),
+         const Divider(height:24),
+         Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('UNREALISED P/L',style:TextStyle(fontSize:11,color:Colors.blueGrey)),Text('${pnl>=0?'+':''}${money.format(pnl)}',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold,color:pnl>=0?green:red))])),Text(invested>0?'${(pnl/invested*100).toStringAsFixed(2)}%':'—',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold,color:pnl>=0?green:red))])
+       ]))),
+       const SizedBox(height:12),title('Holdings'),
+       if(h.isEmpty)const Card(child:Padding(padding:EdgeInsets.all(20),child:Text('No active shares in this basket yet.'))),
+       ...h.values.map((x)=>Card(child:ListTile(leading:const Icon(Icons.show_chart,color:blue),title:Text(x.symbol,style:const TextStyle(fontWeight:FontWeight.bold)),subtitle:Text('${x.qty.toStringAsFixed(4)} shares • avg cost ${money.format(x.qty>0?x.cost/x.qty:0)}'),trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:[Text(money.format(x.value),style:const TextStyle(fontWeight:FontWeight.bold)),Text('${x.pnl>=0?'+':''}${money.format(x.pnl)}',style:TextStyle(color:x.pnl>=0?green:red,fontWeight:FontWeight.w600))])))),
+       const SizedBox(height:12),FilledButton.icon(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Add trade')),
+     ]);
+   }
+   return ListView(padding:const EdgeInsets.all(16),children:[
+     Row(children:[Expanded(child:title('All baskets')),IconButton(onPressed:importCsv,tooltip:'Import CSV into a selected basket',icon:const Icon(Icons.upload_file,color:blue))]),
+     const Padding(padding:EdgeInsets.only(bottom:12),child:Text('Each folder tracks its own holdings, current value and profit/loss.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
+     ...baskets.map((b){
+       final h=holdings(b.id);final invested=h.values.fold(0.0,(s,x)=>s+x.cost),value=h.values.fold(0.0,(s,x)=>s+x.value),pnl=value-invested;
+       return Card(clipBehavior:Clip.antiAlias,elevation:2,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:InkWell(onTap:()=>setState(()=>selectedBasketId=b.id),borderRadius:BorderRadius.circular(20),child:Padding(padding:const EdgeInsets.all(16),child:Column(children:[
+         Row(children:[Container(width:52,height:52,decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF0878FF),Color(0xFF19B8C7)]),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.folder_rounded,color:Colors.white,size:28)),const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(b.name,style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold,color:navy)),const SizedBox(height:4),Text('${h.length} shares • ${byBasket(b.id).length} trades',style:const TextStyle(color:Colors.blueGrey))])),const Icon(Icons.chevron_right,color:navy)]),
+         const Divider(height:24),
+         Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:10,color:Colors.blueGrey)),const SizedBox(height:5),Text(money.format(value),style:const TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:navy))])),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('UNREALISED P/L',style:TextStyle(fontSize:10,color:Colors.blueGrey)),const SizedBox(height:5),Text('${pnl>=0?'+':''}${money.format(pnl)}',style:TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:pnl>=0?green:red))])),Text(invested>0?'${(pnl/invested*100).toStringAsFixed(1)}%':'—',style:TextStyle(fontWeight:FontWeight.bold,color:pnl>=0?green:red))]),
+         const SizedBox(height:8),Row(mainAxisAlignment:MainAxisAlignment.end,children:[TextButton.icon(onPressed:()=>importCsv(b.id),icon:const Icon(Icons.upload_file),label:const Text('Import CSV')),TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),if(baskets.length>1)TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete'))])
+       ]))));
+     }),
+   ]);
+ }
  Widget ledgerPage(){final list=trades.toList()..sort((a,b)=>b.date.compareTo(a.date));return ListView(padding:const EdgeInsets.all(16),children:[
   Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importCsv,icon:const Icon(Icons.upload_file)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
   if(list.isEmpty)const Padding(padding:EdgeInsets.all(28),child:Text('No transactions yet. Add your first buy or sell.')),

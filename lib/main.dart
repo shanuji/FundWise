@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
@@ -273,6 +274,75 @@ class _HomeState extends State<Home> {
  }
  Future<void> setPrice(String s)async{final c=TextEditingController(text:(prices[s]??0).toString());final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:Text('Current price: '+s),content:TextField(controller:c,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Market price (₹)')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,double.tryParse(c.text)!=null&&double.parse(c.text)>=0),child:const Text('Save'))]));if(ok==true){prices[s]=double.parse(c.text);setState((){});save();}}
  Future<void> exportCsv()async{final rows=<List<dynamic>>[['Date','Basket','Type','Symbol','Quantity','Price','Charges','Transaction ID']];for(final t in trades){final b=baskets.where((b)=>b.id==t.basketId).firstOrNull;rows.add([t.date.toIso8601String(),b?.name??t.basketId,t.side,t.symbol,t.qty,t.price,t.charges,t.id]);}final text=const ListToCsvConverter().convert(rows);final path=await FilePicker.platform.saveFile(fileName:'equitybasket-ledger.csv',type:FileType.custom,allowedExtensions:['csv'],bytes:utf8.encode(text));if(mounted)toast(path==null?'Export cancelled':'CSV saved');}
+ Future<void> importContractNote([String? requestedBasketId]) async {
+   if(baskets.isEmpty){if(mounted)toast('Create a basket before importing a contract note.');return;}
+   Basket? destination;
+   if(requestedBasketId!=null){destination=baskets.where((b)=>b.id==requestedBasketId).firstOrNull;}
+   else if(baskets.length==1){destination=baskets.first;}
+   else {destination=await showDialog<Basket>(context:context,builder:(ctx){String? chosen=baskets.first.id;return StatefulBuilder(builder:(ctx,setDialog)=>AlertDialog(title:const Text('Import contract note'),content:DropdownButtonFormField<String>(value:chosen,decoration:const InputDecoration(labelText:'Destination basket'),items:baskets.map((b)=>DropdownMenuItem(value:b.id,child:Text(b.name))).toList(),onChanged:(v)=>setDialog(()=>chosen=v)),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,baskets.where((b)=>b.id==chosen).firstOrNull),child:const Text('Choose basket'))]));});}
+   if(destination==null)return;
+   final picked=await FilePicker.platform.pickFiles(type:FileType.custom,allowedExtensions:['pdf'],withData:true);
+   if(picked==null||picked.files.single.bytes==null)return;
+   final passwordController=TextEditingController();
+   final password=await showDialog<String>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Contract note password'),content:TextField(controller:passwordController,obscureText:true,autofocus:true,decoration:const InputDecoration(labelText:'PDF password')),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,passwordController.text),child:const Text('Unlock'))]));
+   passwordController.dispose();
+   if(password==null||password.isEmpty)return;
+   PdfDocument? document;
+   try {
+     document=PdfDocument(inputBytes:picked.files.single.bytes!,password:password);
+     final text=PdfTextExtractor(document).extractText(layoutText:true);
+     final annexureIndex=text.indexOf('Annexure A');
+     if(annexureIndex<0)throw const FormatException('This does not look like a supported Zerodha contract note (Annexure A was not found).');
+     final annexure=text.substring(annexureIndex);
+     final dateMatch=RegExp(r'Trade Date:\s*(\d{2}/\d{2}/\d{4})').firstMatch(text);
+     if(dateMatch==null)throw const FormatException('Could not read the trade date from the contract note.');
+     final tradeDate=DateFormat('dd/MM/yyyy').parseStrict(dateMatch.group(1)!);
+     final contractMatch=RegExp(r'Contract Note No:\s*(CNT-[A-Z0-9/-]+)').firstMatch(text);
+     final contractId=(contractMatch?.group(1)??'ZERODHA-${DateFormat('yyyyMMdd').format(tradeDate)}').replaceAll(RegExp(r'[^A-Za-z0-9_-]'),'-');
+     final rowPattern=RegExp(r'(\d{10,})\s+(\d{2}:\d{2}:\d{2})\s+(\d{5,})\s+(\d{2}:\d{2}:\d{2})\s+([A-Z0-9&._ -]+?-(?:EQ|BE|SM)/INE[A-Z0-9]+)\s+([BS])\s+(NSE|BSE)\s+([\d,]+)\s+([\d.]+)\s+([\d.]+)');
+     final matches=rowPattern.allMatches(annexure).toList();
+     if(matches.isEmpty)throw const FormatException('No equity trade rows were found in Annexure A. Only Zerodha equity contract notes with text-based trade tables are supported currently.');
+     final parsed=<Trade>[];
+     final seenIds=<String>{};
+     for(final match in matches){
+       final tradeNo=match.group(3)!;
+       final symbolMatch=RegExp(r'^([A-Z0-9&._-]+)-(?:EQ|BE|SM)/').firstMatch(match.group(5)!.trim());
+       final symbol=symbolMatch?.group(1)?.toUpperCase();
+       final side=match.group(6)=='B'?'BUY':'SELL';
+       final quantity=double.tryParse(match.group(8)!.replaceAll(',',''));
+       final price=double.tryParse(match.group(10)!);
+       final timeParts=match.group(4)!.split(':').map(int.parse).toList();
+       if(symbol==null||symbol.isEmpty||quantity==null||quantity<=0||price==null||price<=0)continue;
+       final when=DateTime(tradeDate.year,tradeDate.month,tradeDate.day,timeParts[0],timeParts[1],timeParts[2]);
+       final id='${contractId}-${tradeNo}';
+       if(!seenIds.add(id)||trades.any((t)=>t.id==id))continue;
+       // Contract notes report most statutory levies consolidated, not per trade.
+       // Estimate per-trade charges with the app's delivery-charge model.
+       final charges=estimateDeliveryCharges(quantity,price,side)['Total']??0.0;
+       parsed.add(Trade(id,destination.id,symbol,side,quantity,price,charges,when));
+     }
+     if(parsed.isEmpty)throw const FormatException('No new trades were found. This contract note may already have been imported.');
+     if(!mounted)return;
+     final ok=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Review contract note import'),content:Text('Found ${parsed.length} new trade fills for ${DateFormat('dd MMM yyyy').format(tradeDate)}.\nDestination: ${destination!.name}\n\nThe PDF provides consolidated statutory levies, not a full fee breakdown per trade. Charges will be estimated per trade using the app settings. Existing transactions will not be duplicated.'),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Import trades'))]));
+     if(ok!=true)return;
+     final accepted=<Trade>[],qtyByKey=<String,double>{};
+     final candidates=[...parsed];
+     final ordered=chronologicalTrades([...trades,...candidates]);
+          for(final trade in ordered){
+       final key='${trade.basketId}|${trade.symbol}';final held=qtyByKey[key]??0.0;
+       if(trade.side=='BUY'){qtyByKey[key]=held+trade.qty;if(candidates.contains(trade))accepted.add(trade);}
+       else if(trade.qty<=held+0.0000001){qtyByKey[key]=held-trade.qty;if(candidates.contains(trade))accepted.add(trade);}
+       
+     }
+     trades.addAll(accepted);
+     for(final t in accepted){prices.putIfAbsent(t.symbol,()=>t.price);}
+     setState((){});await save();
+     if(mounted)toast('Imported ${accepted.length} trade fills into ${destination.name}; skipped ${parsed.length-accepted.length} invalid/oversell row(s). Charges are estimates.');
+   }catch(e){
+     final message=e.toString().toLowerCase().contains('password')||e.toString().toLowerCase().contains('encrypt')?'Could not unlock PDF. Check the password and try again.':'Contract note import failed: $e';
+     if(mounted)toast(message);
+   }finally{document?.dispose();}
+ }
  Future<void> importCsv([String? requestedBasketId]) async {
    if(baskets.isEmpty){if(mounted)toast('Create a basket before importing transactions.');return;}
    Basket? destination;
@@ -382,7 +452,7 @@ class _HomeState extends State<Home> {
    if(selected!=null){
      final h=holdings(selected.id);final invested=h.values.fold(0.0,(s,x)=>s+x.cost),value=h.values.fold(0.0,(s,x)=>s+x.value),pnl=value-invested;
      return ListView(padding:const EdgeInsets.all(16),children:[
-       Row(children:[IconButton(onPressed:()=>setState(()=>selectedBasketId=null),icon:const Icon(Icons.arrow_back)),Expanded(child:Text(selected.name,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold,color:navy))),IconButton(onPressed:()=>importCsv(selected.id),tooltip:'Import CSV into this basket',icon:const Icon(Icons.upload_file)),PopupMenuButton<String>(onSelected:(v){if(v=='rename')renameBasket(selected);if(v=='delete')deleteBasket(selected);},itemBuilder:(_)=>[const PopupMenuItem(value:'rename',child:Text('Rename')),if(baskets.length>1)const PopupMenuItem(value:'delete',child:Text('Delete'))])]),
+       Row(children:[IconButton(onPressed:()=>setState(()=>selectedBasketId=null),icon:const Icon(Icons.arrow_back)),Expanded(child:Text(selected.name,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold,color:navy))),IconButton(onPressed:()=>importContractNote(selected.id),tooltip:'Import Zerodha contract note PDF into this basket',icon:const Icon(Icons.picture_as_pdf)),IconButton(onPressed:()=>importCsv(selected.id),tooltip:'Import CSV into this basket',icon:const Icon(Icons.upload_file)),PopupMenuButton<String>(onSelected:(v){if(v=='rename')renameBasket(selected);if(v=='delete')deleteBasket(selected);},itemBuilder:(_)=>[const PopupMenuItem(value:'rename',child:Text('Rename')),if(baskets.length>1)const PopupMenuItem(value:'delete',child:Text('Delete'))])]),
        Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
          Text('${h.length} active shares • ${byBasket(selected.id).length} trades',style:const TextStyle(color:Colors.blueGrey)),const SizedBox(height:16),
          Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:11,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(value),style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold,color:navy))])),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('INVESTED VALUE',style:TextStyle(fontSize:11,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(invested),style:const TextStyle(fontSize:16,fontWeight:FontWeight.w600,color:navy))]))]),
@@ -396,7 +466,7 @@ class _HomeState extends State<Home> {
      ]);
    }
    return ListView(padding:const EdgeInsets.all(16),children:[
-     Row(children:[Expanded(child:title('All baskets')),IconButton(onPressed:importCsv,tooltip:'Import CSV into a selected basket',icon:const Icon(Icons.upload_file,color:blue))]),
+     Row(children:[Expanded(child:title('All baskets')),IconButton(onPressed:importContractNote,tooltip:'Import Zerodha contract note PDF',icon:const Icon(Icons.picture_as_pdf,color:blue)),IconButton(onPressed:importCsv,tooltip:'Import CSV into a selected basket',icon:const Icon(Icons.upload_file,color:blue))]),
      const Padding(padding:EdgeInsets.only(bottom:12),child:Text('Each folder tracks its own holdings, current value and profit/loss.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
      ...baskets.map((b){
        final h=holdings(b.id);final invested=h.values.fold(0.0,(s,x)=>s+x.cost),value=h.values.fold(0.0,(s,x)=>s+x.value),pnl=value-invested;
@@ -410,7 +480,7 @@ class _HomeState extends State<Home> {
    ]);
  }
  Widget ledgerPage(){final list=trades.toList()..sort((a,b)=>b.date.compareTo(a.date));return ListView(padding:const EdgeInsets.all(16),children:[
-  Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importCsv,icon:const Icon(Icons.upload_file)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
+  Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importContractNote,tooltip:'Import Zerodha contract note PDF',icon:const Icon(Icons.picture_as_pdf)),IconButton(onPressed:importCsv,tooltip:'Import CSV',icon:const Icon(Icons.upload_file)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
   if(list.isEmpty)const Padding(padding:EdgeInsets.all(28),child:Text('No transactions yet. Add your first buy or sell.')),
    ...list.map((t)=>Card(child:ListTile(
      leading:CircleAvatar(backgroundColor:(t.side=='BUY'?blue:red).withOpacity(.12),child:Icon(t.side=='BUY'?Icons.south_west:Icons.north_east,color:t.side=='BUY'?blue:red)),

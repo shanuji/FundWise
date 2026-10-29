@@ -365,10 +365,10 @@ class _HomeState extends State<Home> {
    try{
      final doc=await PDFDoc.fromPath(path,password:password);
      final text=await doc.text;
-     final contractDateMatch=RegExp(r'Trade Date\\s*:\\s*(\\d{2}/\\d{2}/\\d{4})',caseSensitive:false).firstMatch(text);
+     final contractDateMatch=RegExp(r'Trade Date\s*:\s*(\d{2}/\d{2}/\d{4})',caseSensitive:false).firstMatch(text);
      if(contractDateMatch==null)throw const FormatException('This does not look like a supported Zerodha contract note: trade date was not found.');
      final tradeDate=DateFormat('dd/MM/yyyy').parseStrict(contractDateMatch.group(1)!);
-     final rowPattern=RegExp(r'(\\d{10,})\\s+(\\d{2}:\\d{2}:\\d{2})\\s+(\\d{6,})\\s+(\\d{2}:\\d{2}:\\d{2})\\s+([A-Z0-9.&_-]+/(?:INE[A-Z0-9]+))\\s+([BS])\\s+(NSE|BSE)\\s+([\\d,]+)\\s+([\\d.]+)\\s+([\\d.]+)',caseSensitive:false);
+     final rowPattern=RegExp(r'(\d{10,})\s+(\d{2}:\d{2}:\d{2})\s+(\d{6,})\s+(\d{2}:\d{2}:\d{2})\s+([A-Z0-9.&_-]+/(?:INE[A-Z0-9]+))\s+([BS])\s+(NSE|BSE)\s+([\d,]+)\s+([\d.]+)\s+([\d.]+)',caseSensitive:false);
      final parsed=<Map<String,dynamic>>[];
      for(final m in rowPattern.allMatches(text)){
        final security=m.group(5)!.toUpperCase();
@@ -399,7 +399,7 @@ class _HomeState extends State<Home> {
      const SizedBox(height:4),const Text('Historical prices from Yahoo Finance. Returns are estimates; missing price history can affect portfolio results.',style:TextStyle(fontSize:11,color:Colors.blueGrey))
    ]))),
    const SizedBox(height:12),title('Quick actions'),
-   Row(children:[Expanded(child:action(Icons.add_circle_outline,'Buy / Sell',()=>addTrade())),Expanded(child:action(Icons.upload_file,'Import CSV',importCsv)),Expanded(child:action(Icons.download,'Export CSV',exportCsv))]),
+   Row(children:[Expanded(child:action(Icons.add_circle_outline,'Buy / Sell',()=>addTrade())),Expanded(child:action(Icons.upload_file,'Import CSV',importCsv)),Expanded(child:action(Icons.picture_as_pdf,'Import PDF',importZerodhaContractNote)),Expanded(child:action(Icons.download,'Export CSV',exportCsv))]),
    const SizedBox(height:14),const Text('Free refresh uses end-of-day NSE/BSE data; it is not intraday live pricing. Manual price entry remains available.',style:TextStyle(color:Colors.blueGrey,fontSize:12)),
  ]);
  Widget action(IconData i,String s,VoidCallback f)=>Card(child:InkWell(onTap:f,borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.all(12),child:Column(children:[Icon(i,color:blue),const SizedBox(height:6),Text(s,style:const TextStyle(fontSize:12))]))));
@@ -408,7 +408,7 @@ class _HomeState extends State<Home> {
    if(selected!=null){
      final h=holdings(selected.id);final invested=h.values.fold(0.0,(s,x)=>s+x.cost),value=h.values.fold(0.0,(s,x)=>s+x.value),pnl=value-invested;
      return ListView(padding:const EdgeInsets.all(16),children:[
-       Row(children:[IconButton(onPressed:()=>setState(()=>selectedBasketId=null),icon:const Icon(Icons.arrow_back)),Expanded(child:Text(selected.name,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold,color:navy))),IconButton(onPressed:()=>importCsv(selected.id),tooltip:'Import CSV into this basket',icon:const Icon(Icons.upload_file)),PopupMenuButton<String>(onSelected:(v){if(v=='rename')renameBasket(selected);if(v=='delete')deleteBasket(selected);},itemBuilder:(_)=>[const PopupMenuItem(value:'rename',child:Text('Rename')),if(baskets.length>1)const PopupMenuItem(value:'delete',child:Text('Delete'))])]),
+       Row(children:[IconButton(onPressed:()=>setState(()=>selectedBasketId=null),icon:const Icon(Icons.arrow_back)),Expanded(child:Text(selected.name,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold,color:navy))),IconButton(onPressed:()=>importCsv(selected.id),tooltip:'Import CSV into this basket',icon:const Icon(Icons.upload_file)),IconButton(onPressed:()=>importZerodhaContractNote(selected.id),tooltip:'Import contract note PDF into this basket',icon:const Icon(Icons.picture_as_pdf)),PopupMenuButton<String>(onSelected:(v){if(v=='rename')renameBasket(selected);if(v=='delete')deleteBasket(selected);},itemBuilder:(_)=>[const PopupMenuItem(value:'rename',child:Text('Rename')),if(baskets.length>1)const PopupMenuItem(value:'delete',child:Text('Delete'))])]),
        Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
          Text('${h.length} active shares • ${byBasket(selected.id).length} trades',style:const TextStyle(color:Colors.blueGrey)),const SizedBox(height:16),
          Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:11,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(value),style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold,color:navy))])),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('INVESTED VALUE',style:TextStyle(fontSize:11,color:Colors.blueGrey)),const SizedBox(height:4),Text(money.format(invested),style:const TextStyle(fontSize:16,fontWeight:FontWeight.w600,color:navy))]))]),
@@ -422,7 +422,7 @@ class _HomeState extends State<Home> {
      ]);
    }
    return ListView(padding:const EdgeInsets.all(16),children:[
-     Row(children:[Expanded(child:title('All baskets')),IconButton(onPressed:importCsv,tooltip:'Import CSV into a selected basket',icon:const Icon(Icons.upload_file,color:blue))]),
+     Row(children:[Expanded(child:title('All baskets')),IconButton(onPressed:importCsv,tooltip:'Import CSV into a selected basket',icon:const Icon(Icons.upload_file,color:blue)),IconButton(onPressed:importZerodhaContractNote,tooltip:'Import Zerodha contract note PDF',icon:const Icon(Icons.picture_as_pdf,color:blue))]),
      const Padding(padding:EdgeInsets.only(bottom:12),child:Text('Each folder tracks its own holdings, current value and profit/loss.',style:TextStyle(color:Colors.blueGrey,fontSize:12))),
      ...baskets.map((b){
        final h=holdings(b.id);final invested=h.values.fold(0.0,(s,x)=>s+x.cost),value=h.values.fold(0.0,(s,x)=>s+x.value),pnl=value-invested;
@@ -430,13 +430,13 @@ class _HomeState extends State<Home> {
          Row(children:[Container(width:52,height:52,decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF0878FF),Color(0xFF19B8C7)]),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.folder_rounded,color:Colors.white,size:28)),const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(b.name,style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold,color:navy)),const SizedBox(height:4),Text('${h.length} shares • ${byBasket(b.id).length} trades',style:const TextStyle(color:Colors.blueGrey))])),const Icon(Icons.chevron_right,color:navy)]),
          const Divider(height:24),
          Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('CURRENT VALUE',style:TextStyle(fontSize:10,color:Colors.blueGrey)),const SizedBox(height:5),Text(money.format(value),style:const TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:navy))])),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('UNREALISED P/L',style:TextStyle(fontSize:10,color:Colors.blueGrey)),const SizedBox(height:5),Text('${pnl>=0?'+':''}${money.format(pnl)}',style:TextStyle(fontWeight:FontWeight.bold,fontSize:16,color:pnl>=0?green:red))])),Text(invested>0?'${(pnl/invested*100).toStringAsFixed(1)}%':'—',style:TextStyle(fontWeight:FontWeight.bold,color:pnl>=0?green:red))]),
-         const SizedBox(height:8),Row(mainAxisAlignment:MainAxisAlignment.end,children:[TextButton.icon(onPressed:()=>importCsv(b.id),icon:const Icon(Icons.upload_file),label:const Text('Import CSV')),TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),if(baskets.length>1)TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete'))])
+         const SizedBox(height:8),Row(mainAxisAlignment:MainAxisAlignment.end,children:[TextButton.icon(onPressed:()=>importCsv(b.id),icon:const Icon(Icons.upload_file),label:const Text('Import CSV')),TextButton.icon(onPressed:()=>importZerodhaContractNote(b.id),icon:const Icon(Icons.picture_as_pdf),label:const Text('Import PDF')),TextButton(onPressed:()=>renameBasket(b),child:const Text('Rename')),if(baskets.length>1)TextButton(onPressed:()=>deleteBasket(b),child:const Text('Delete'))])
        ]))));
      }),
    ]);
  }
  Widget ledgerPage(){final list=trades.toList()..sort((a,b)=>b.date.compareTo(a.date));return ListView(padding:const EdgeInsets.all(16),children:[
-  Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importCsv,icon:const Icon(Icons.upload_file)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
+  Row(children:[Expanded(child:title('Transaction ledger')),IconButton(onPressed:importCsv,tooltip:'Import CSV',icon:const Icon(Icons.upload_file)),IconButton(onPressed:importZerodhaContractNote,tooltip:'Import Zerodha contract note PDF',icon:const Icon(Icons.picture_as_pdf)),IconButton(onPressed:exportCsv,icon:const Icon(Icons.download))]),
   if(list.isEmpty)const Padding(padding:EdgeInsets.all(28),child:Text('No transactions yet. Add your first buy or sell.')),
    ...list.map((t)=>Card(child:ListTile(
      leading:CircleAvatar(backgroundColor:(t.side=='BUY'?blue:red).withOpacity(.12),child:Icon(t.side=='BUY'?Icons.south_west:Icons.north_east,color:t.side=='BUY'?blue:red)),
@@ -628,9 +628,9 @@ class _HomeState extends State<Home> {
      // The note reports levies at contract-note level, not per trade. Allocate the
      // reconciled total proportionally by trade turnover so aggregate costs match.
      double amountOnLabel(String label){
-       for(final line in text.split(RegExp(r'[\\r\\n]+'))){
+       for(final line in text.split(RegExp(r'[\r\n]+'))){
          if(line.toLowerCase().contains(label.toLowerCase())){
-           final values=RegExp(r'\\(?(-?[\\d,]+\\.\\d{2})\\)?').allMatches(line).map((m)=>double.tryParse(m.group(1)!.replaceAll(',',''))).whereType<double>().toList();
+           final values=RegExp(r'\(?(-?[\d,]+\.\d{2})\)?').allMatches(line).map((m)=>double.tryParse(m.group(1)!.replaceAll(',',''))).whereType<double>().toList();
            if(values.isNotEmpty)return values.last.abs();
          }
        }
@@ -659,7 +659,7 @@ class _HomeState extends State<Home> {
      if(candidates.isEmpty){if(mounted)toast('No new trades to import; $duplicates duplicate trade(s) skipped.');return;}
      final buyCount=candidates.where((t)=>t.side=='BUY').length, sellCount=candidates.where((t)=>t.side=='SELL').length;
      final totalValue=candidates.fold<double>(0,(s,t)=>s+t.qty*t.price);
-     final approved=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Review contract note import'),content:Text('Trade date: ${dates.format(tradeDate)}\\nBasket: ${destination!.name}\\nNew trades: ${candidates.length} ($buyCount buys, $sellCount sells)\\nDuplicate rows to skip: $duplicates\\nGross turnover: ${money.format(totalValue)}\\nContract-note charges allocated: ${money.format(candidates.fold<double>(0,(s,t)=>s+t.charges))}\\n\\nTrades will be added only after you confirm.'),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Import trades'))]));
+     final approved=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Review contract note import'),content:Text('Trade date: ${dates.format(tradeDate)}\\nBasket: ${destination!.name}\nNew trades: ${candidates.length} ($buyCount buys, $sellCount sells)\nDuplicate rows to skip: $duplicates\nGross turnover: ${money.format(totalValue)}\nContract-note charges allocated: ${money.format(candidates.fold<double>(0,(s,t)=>s+t.charges))}\n\nTrades will be added only after you confirm.'),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Import trades'))]));
      if(approved!=true)return;
      // Validate sell quantities against the destination basket's existing holdings and
      // earlier trades in this same import before committing anything.

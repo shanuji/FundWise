@@ -298,7 +298,7 @@ class _HomeState extends State<Home> {
      if(dateMatch==null)throw const FormatException('Could not read the trade date from the contract note.');
      final tradeDate=DateFormat('dd/MM/yyyy').parseStrict(dateMatch.group(1)!);
      final contractMatch=RegExp(r'Contract Note No:\s*(CNT-[A-Z0-9/-]+)').firstMatch(text);
-     final contractId=(contractMatch?.group(1)??'ZERODHA-\${DateFormat('yyyyMMdd').format(tradeDate)}').replaceAll(RegExp(r'[^A-Za-z0-9_-]'),'-');
+     final contractId=(contractMatch?.group(1)??'ZERODHA-${DateFormat('yyyyMMdd').format(tradeDate)}').replaceAll(RegExp(r'[^A-Za-z0-9_-]'),'-');
      final rowPattern=RegExp(r'(\d{10,})\s+(\d{2}:\d{2}:\d{2})\s+(\d{5,})\s+(\d{2}:\d{2}:\d{2})\s+([A-Z0-9&._ -]+?-(?:EQ|BE|SM)/INE[A-Z0-9]+)\s+([BS])\s+(NSE|BSE)\s+([\d,]+)\s+([\d.]+)\s+([\d.]+)');
      final matches=rowPattern.allMatches(annexure).toList();
      if(matches.isEmpty)throw const FormatException('No equity trade rows were found in Annexure A. Only Zerodha equity contract notes with text-based trade tables are supported currently.');
@@ -314,7 +314,7 @@ class _HomeState extends State<Home> {
        final timeParts=match.group(4)!.split(':').map(int.parse).toList();
        if(symbol==null||symbol.isEmpty||quantity==null||quantity<=0||price==null||price<=0)continue;
        final when=DateTime(tradeDate.year,tradeDate.month,tradeDate.day,timeParts[0],timeParts[1],timeParts[2]);
-       final id='\${contractId}-\${tradeNo}';
+       final id='${contractId}-${tradeNo}';
        if(!seenIds.add(id)||trades.any((t)=>t.id==id))continue;
        // Contract notes report most statutory levies consolidated, not per trade.
        // Estimate per-trade charges with the app's delivery-charge model.
@@ -323,14 +323,14 @@ class _HomeState extends State<Home> {
      }
      if(parsed.isEmpty)throw const FormatException('No new trades were found. This contract note may already have been imported.');
      if(!mounted)return;
-     final ok=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Review contract note import'),content:Text('Found \${parsed.length} new trade fills for \${DateFormat('dd MMM yyyy').format(tradeDate)}.\\nDestination: \${destination!.name}\\n\\nThe PDF provides consolidated statutory levies, not a full fee breakdown per trade. Charges will be estimated per trade using the app settings. Existing transactions will not be duplicated.'),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Import trades'))]));
+     final ok=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Review contract note import'),content:Text('Found ${parsed.length} new trade fills for ${DateFormat('dd MMM yyyy').format(tradeDate)}.\nDestination: ${destination!.name}\n\nThe PDF provides consolidated statutory levies, not a full fee breakdown per trade. Charges will be estimated per trade using the app settings. Existing transactions will not be duplicated.'),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Import trades'))]));
      if(ok!=true)return;
      final accepted=<Trade>[],qtyByKey=<String,double>{};
      final candidates=[...parsed];
      final ordered=chronologicalTrades([...trades,...candidates]);
      var invalid=0;
      for(final trade in ordered){
-       final key='\${trade.basketId}|\${trade.symbol}';final held=qtyByKey[key]??0.0;
+       final key='${trade.basketId}|${trade.symbol}';final held=qtyByKey[key]??0.0;
        if(trade.side=='BUY'){qtyByKey[key]=held+trade.qty;if(candidates.contains(trade))accepted.add(trade);}
        else if(trade.qty<=held+0.0000001){qtyByKey[key]=held-trade.qty;if(candidates.contains(trade))accepted.add(trade);}
        else if(candidates.contains(trade)){invalid++;}
@@ -338,7 +338,7 @@ class _HomeState extends State<Home> {
      trades.addAll(accepted);
      for(final t in accepted){prices.putIfAbsent(t.symbol,()=>t.price);}
      setState((){});await save();
-     if(mounted)toast('Imported \${accepted.length} trade fills into \${destination.name}; skipped \${parsed.length-accepted.length} invalid/oversell row(s). Charges are estimates.');
+     if(mounted)toast('Imported ${accepted.length} trade fills into ${destination.name}; skipped ${parsed.length-accepted.length} invalid/oversell row(s). Charges are estimates.');
    }catch(e){
      final message=e.toString().toLowerCase().contains('password')||e.toString().toLowerCase().contains('encrypt')?'Could not unlock PDF. Check the password and try again.':'Contract note import failed: $e';
      if(mounted)toast(message);

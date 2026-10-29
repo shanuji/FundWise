@@ -295,10 +295,10 @@ class _HomeState extends State<Home> {
      for(final page in document.pages){final pageText=await page.loadText();pagesText.add(pageText?.fullText??'');}
      final allText=pagesText.join('\n');
      if(!allText.toUpperCase().contains('CONTRACT NOTE')||!allText.toUpperCase().contains('ANNEXURE A'))throw const FormatException('This does not look like a supported Zerodha contract note with Annexure A trade details.');
-     final dateMatch=RegExp(r'Trade Date:\\s*(\\d{2}/\\d{2}/\\d{4})',caseSensitive:false).firstMatch(allText);
+     final dateMatch=RegExp(r'Trade Date:\s*(\d{2}/\d{2}/\d{4})',caseSensitive:false).firstMatch(allText);
      if(dateMatch==null)throw const FormatException('Could not find Trade Date in the contract note.');
      final tradeDate=DateFormat('dd/MM/yyyy').parseStrict(dateMatch.group(1)!);
-     final rowPattern=RegExp(r'(\\d{13,16})\\s+(\\d{2}:\\d{2}:\\d{2})\\s+(\\d{5,12})\\s+(\\d{2}:\\d{2}:\\d{2})\\s+([A-Z0-9&._-]+/INE[A-Z0-9]{9})\\s+([BS])\\s+(NSE|BSE)\\s+(\\d+(?:\\.\\d+)?)\\s+([\\d.]+)\\s+([\\d.]+)',caseSensitive:false);
+     final rowPattern=RegExp(r'(\d{13,16})\s+(\d{2}:\d{2}:\d{2})\s+(\d{5,12})\s+(\d{2}:\d{2}:\d{2})\s+([A-Z0-9&._-]+/INE[A-Z0-9]{9})\s+([BS])\s+(NSE|BSE)\s+(\d+(?:\.\d+)?)\s+([\d.]+)\s+([\d.]+)',caseSensitive:false);
      final candidates=<Trade>[];final seenIds=<String>{};var ignoredExisting=0;
      for(final match in rowPattern.allMatches(allText.toUpperCase())){
        final tradeNo=match.group(3)!;final symbolPart=match.group(5)!;final symbol=symbolPart.split('/').first.split('-').first;

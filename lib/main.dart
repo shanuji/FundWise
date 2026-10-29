@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 void main()=>runApp(const EquityBasketApp());
 const navy=Color(0xFF071B49), blue=Color(0xFF0878FF), green=Color(0xFF08B86A), red=Color(0xFFE34D59);
@@ -273,6 +274,66 @@ class _HomeState extends State<Home> {
  }
  Future<void> setPrice(String s)async{final c=TextEditingController(text:(prices[s]??0).toString());final ok=await showDialog<bool>(context:context,builder:(x)=>AlertDialog(title:Text('Current price: '+s),content:TextField(controller:c,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Market price (₹)')),actions:[TextButton(onPressed:()=>Navigator.pop(x,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(x,double.tryParse(c.text)!=null&&double.parse(c.text)>=0),child:const Text('Save'))]));if(ok==true){prices[s]=double.parse(c.text);setState((){});save();}}
  Future<void> exportCsv()async{final rows=<List<dynamic>>[['Date','Basket','Type','Symbol','Quantity','Price','Charges','Transaction ID']];for(final t in trades){final b=baskets.where((b)=>b.id==t.basketId).firstOrNull;rows.add([t.date.toIso8601String(),b?.name??t.basketId,t.side,t.symbol,t.qty,t.price,t.charges,t.id]);}final text=const ListToCsvConverter().convert(rows);final path=await FilePicker.platform.saveFile(fileName:'equitybasket-ledger.csv',type:FileType.custom,allowedExtensions:['csv'],bytes:utf8.encode(text));if(mounted)toast(path==null?'Export cancelled':'CSV saved');}
+
+ Future<void> importContractNote([String? requestedBasketId]) async {
+   if(baskets.isEmpty){if(mounted)toast('Create a basket before importing a contract note.');return;}
+   Basket? destination;
+   if(requestedBasketId!=null){destination=baskets.where((b)=>b.id==requestedBasketId).firstOrNull;}
+   else if(baskets.length==1){destination=baskets.first;}
+   else {destination=await showDialog<Basket>(context:context,builder:(ctx){String? chosen=baskets.first.id;return StatefulBuilder(builder:(ctx,setDialog)=>AlertDialog(title:const Text('Import contract note'),content:DropdownButtonFormField<String>(value:chosen,decoration:const InputDecoration(labelText:'Destination basket'),items:baskets.map((b)=>DropdownMenuItem(value:b.id,child:Text(b.name))).toList(),onChanged:(v)=>setDialog(()=>chosen=v)),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,baskets.where((b)=>b.id==chosen).firstOrNull),child:const Text('Choose basket'))]));});}
+   if(destination==null)return;
+   final picked=await FilePicker.platform.pickFiles(type:FileType.custom,allowedExtensions:['pdf'],withData:true);
+   if(picked==null||picked.files.single.bytes==null)return;
+   final passwordController=TextEditingController();
+   final password=await showDialog<String>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Contract note password'),content:TextField(controller:passwordController,obscureText:true,autofocus:true,decoration:const InputDecoration(labelText:'PDF password',hintText:'Enter password for this PDF'),onSubmitted:(v)=>Navigator.pop(ctx,v)),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,passwordController.text),child:const Text('Read PDF'))]));
+   passwordController.dispose();if(password==null||password.isEmpty)return;
+   PdfDocument? document;
+   try {
+     await pdfrxFlutterInitialize();
+     document=await PdfDocument.openData(picked.files.single.bytes!,passwordProvider:() async=>password,firstAttemptByEmptyPassword:false,sourceName:picked.files.single.name);
+     final pagesText=<String>[];
+     for(final page in document.pages){final pageText=await page.loadText();pagesText.add(pageText?.fullText??'');}
+     final allText=pagesText.join('\n');
+     if(!allText.toUpperCase().contains('CONTRACT NOTE')||!allText.toUpperCase().contains('ANNEXURE A'))throw const FormatException('This does not look like a supported Zerodha contract note with Annexure A trade details.');
+     final dateMatch=RegExp(r'Trade Date:\\s*(\\d{2}/\\d{2}/\\d{4})',caseSensitive:false).firstMatch(allText);
+     if(dateMatch==null)throw const FormatException('Could not find Trade Date in the contract note.');
+     final tradeDate=DateFormat('dd/MM/yyyy').parseStrict(dateMatch.group(1)!);
+     final rowPattern=RegExp(r'(\\d{13,16})\\s+(\\d{2}:\\d{2}:\\d{2})\\s+(\\d{5,12})\\s+(\\d{2}:\\d{2}:\\d{2})\\s+([A-Z0-9&._-]+/INE[A-Z0-9]{9})\\s+([BS])\\s+(NSE|BSE)\\s+(\\d+(?:\\.\\d+)?)\\s+([\\d.]+)\\s+([\\d.]+)',caseSensitive:false);
+     final candidates=<Trade>[];final seenIds=<String>{};var ignoredExisting=0;
+     for(final match in rowPattern.allMatches(allText.toUpperCase())){
+       final tradeNo=match.group(3)!;final symbolPart=match.group(5)!;final symbol=symbolPart.split('/').first.split('-').first;
+       final side=match.group(6)=='B'?'BUY':'SELL';final exchange=match.group(7)!;
+       final qty=double.tryParse(match.group(8)!);final price=double.tryParse(match.group(10)!);
+       if(qty==null||price==null||qty<=0||price<=0)continue;
+       final id='CN-${DateFormat('yyyyMMdd').format(tradeDate)}-$tradeNo';
+       if(trades.any((t)=>t.id==id)||!seenIds.add(id)){ignoredExisting++;continue;}
+       final charges=estimateDeliveryCharges(qty,price,side)['Total']??0.0;
+       candidates.add(Trade(id,destination.id,symbol,side,qty,price,charges,tradeDate));
+     }
+     if(candidates.isEmpty)throw const FormatException('No new trade rows were found in Annexure A. The PDF may already be imported, or its layout may be unsupported.');
+     final confirmed=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Review contract note import'),content:SizedBox(width:420,child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+       Text('Basket: ${destination!.name}'),Text('Trade date: ${dates.format(tradeDate)}'),Text('${candidates.length} new trades • $ignoredExisting already imported'),const SizedBox(height:10),
+       const Text('Preview (first 8 trades)',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),
+       ...candidates.take(8).map((t)=>Padding(padding:const EdgeInsets.symmetric(vertical:3),child:Text('${t.side}  ${t.symbol}  ${t.qty} × ${money.format(t.price)}',style:const TextStyle(fontSize:12)))),
+       if(candidates.length>8)Text('…and ${candidates.length-8} more'),
+       const SizedBox(height:10),const Text('Trade prices come from Annexure A. Per-trade levies are not itemised in this PDF, so charges are estimated using the app settings.',style:TextStyle(fontSize:12,color:Colors.blueGrey)),
+     ])),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Import trades'))]));
+     if(confirmed!=true)return;
+     final accepted=<Trade>[],qtyByKey=<String,double>{};
+     for(final trade in chronologicalTrades([...trades,...candidates])){
+       final key='${trade.basketId}|${trade.symbol}';final held=qtyByKey[key]??0.0;
+       if(trade.side=='BUY'){qtyByKey[key]=held+trade.qty;if(candidates.contains(trade))accepted.add(trade);}
+       else if(trade.qty<=held+0.0000001){qtyByKey[key]=held-trade.qty;if(candidates.contains(trade))accepted.add(trade);}
+     }
+     final rejected=candidates.length-accepted.length;
+     trades.addAll(accepted);
+     for(final trade in accepted){prices.putIfAbsent(trade.symbol,()=>trade.price);}
+     setState((){});await save();
+     if(mounted)toast('Imported ${accepted.length} trades into ${destination.name}; $ignoredExisting duplicate(s) skipped; $rejected sell trade(s) skipped because holdings were insufficient.');
+   } catch(e) {
+     if(mounted)toast('PDF import failed. Check the password and confirm this is a text-based Zerodha contract note. Details: $e');
+   } finally {document?.dispose();}
+ }
  Future<void> importCsv([String? requestedBasketId]) async {
    if(baskets.isEmpty){if(mounted)toast('Create a basket before importing transactions.');return;}
    Basket? destination;
@@ -346,7 +407,7 @@ class _HomeState extends State<Home> {
      if(mounted)toast('Imported ${accepted.length}; skipped ${skipped} duplicate(s); rejected ${invalid} invalid/oversell row(s). CSV supports EquityBasket exports and common Zerodha tradebook columns; PDF contract notes are not supported yet.');
    }catch(e){if(mounted)toast('CSV import failed: $e');}
  }
- @override Widget build(BuildContext c){if(!ready)return const Scaffold(body:Center(child:CircularProgressIndicator()));final pages=[dashboard(),basketPage(),ledgerPage(),reportsPage(),settingsPage()];return Scaffold(appBar:AppBar(title:const Text('EquityBasket',style:TextStyle(fontWeight:FontWeight.bold)),actions:[IconButton(onPressed:refreshingPrices?null:refreshPrices,icon:refreshingPrices?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2,color:Colors.white)):const Icon(Icons.refresh_rounded),tooltip:'Refresh EOD prices'),IconButton(onPressed:()=>addTrade(),icon:const Icon(Icons.add_chart),tooltip:'Add transaction')]),body:pages[tab],floatingActionButton:tab==1?FloatingActionButton.extended(onPressed:addBasket,icon:const Icon(Icons.add),label:const Text('New basket')):tab==2?FloatingActionButton.extended(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Transaction')):null,bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const [NavigationDestination(icon:Icon(Icons.home_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]));}
+ @override Widget build(BuildContext c){if(!ready)return const Scaffold(body:Center(child:CircularProgressIndicator()));final pages=[dashboard(),basketPage(),ledgerPage(),reportsPage(),settingsPage()];return Scaffold(appBar:AppBar(title:const Text('EquityBasket',style:TextStyle(fontWeight:FontWeight.bold)),actions:[IconButton(onPressed:()=>importContractNote(),tooltip:'Import Zerodha contract note PDF',icon:const Icon(Icons.picture_as_pdf_rounded)),IconButton(onPressed:refreshingPrices?null:refreshPrices,icon:refreshingPrices?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2,color:Colors.white)):const Icon(Icons.refresh_rounded),tooltip:'Refresh EOD prices'),IconButton(onPressed:()=>addTrade(),icon:const Icon(Icons.add_chart),tooltip:'Add transaction')]),body:pages[tab],floatingActionButton:tab==1?FloatingActionButton.extended(onPressed:addBasket,icon:const Icon(Icons.add),label:const Text('New basket')):tab==2?FloatingActionButton.extended(onPressed:()=>addTrade(),icon:const Icon(Icons.add),label:const Text('Transaction')):null,bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const [NavigationDestination(icon:Icon(Icons.home_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.grid_view),label:'Baskets'),NavigationDestination(icon:Icon(Icons.receipt_long),label:'Ledger'),NavigationDestination(icon:Icon(Icons.query_stats),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]));}
  Widget title(String s,{VoidCallback? onTap})=>Row(children:[Expanded(child:Text(s,style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold,color:navy))),if(onTap!=null)TextButton(onPressed:onTap,child:const Text('View all'))]);
  Widget metric(String s,String v)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(s,style:const TextStyle(color:Colors.white70,fontSize:12)),const SizedBox(height:5),Text(v,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w600))]));
  Widget dashboard()=>ListView(padding:const EdgeInsets.all(16),children:[

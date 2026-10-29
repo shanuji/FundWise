@@ -328,12 +328,11 @@ class _HomeState extends State<Home> {
      final accepted=<Trade>[],qtyByKey=<String,double>{};
      final candidates=[...parsed];
      final ordered=chronologicalTrades([...trades,...candidates]);
-     var invalid=0;
-     for(final trade in ordered){
+          for(final trade in ordered){
        final key='${trade.basketId}|${trade.symbol}';final held=qtyByKey[key]??0.0;
        if(trade.side=='BUY'){qtyByKey[key]=held+trade.qty;if(candidates.contains(trade))accepted.add(trade);}
        else if(trade.qty<=held+0.0000001){qtyByKey[key]=held-trade.qty;if(candidates.contains(trade))accepted.add(trade);}
-       else if(candidates.contains(trade)){invalid++;}
+       
      }
      trades.addAll(accepted);
      for(final t in accepted){prices.putIfAbsent(t.symbol,()=>t.price);}
